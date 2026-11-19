@@ -33,6 +33,7 @@ final class BoatJumpCommand implements TabExecutor, Listener {
 		new Help("/보트점프 막대기", "마커 막대기를 받습니다. 블록을 좌클릭하면 첫째 지점, 우클릭하면 둘째 지점이 지정됩니다.", "막대기"),
 		new Help("/보트점프 생성 <이름>", "막대기로 선택한 범위로 마커를 만듭니다.", "생성 "),
 		new Help("/보트점프 생성 그룹 <이름>", "빈 그룹을 만듭니다. 그룹에 넣은 마커들은 그룹의 설정값을 함께 씁니다.", "생성 그룹 "),
+		new Help("/보트점프 삭제", "지금 서 있거나 바라보는 마커를 지웁니다.", "삭제"),
 		new Help("/보트점프 삭제 <이름>", "마커를 지웁니다.", "삭제 "),
 		new Help("/보트점프 삭제 그룹 <이름>", "그룹을 지웁니다. 속해 있던 마커는 그룹의 설정값을 물려받고 남습니다.", "삭제 그룹 "),
 		new Help("/보트점프 리스트", "모든 마커의 이름과 그룹, 범위를 봅니다.", "리스트"),
@@ -149,8 +150,15 @@ final class BoatJumpCommand implements TabExecutor, Listener {
 					removeGroup(sender, args[2]);
 				} else if (args.length == 2) {
 					removeMarker(sender, args[1]);
+				} else if (args.length == 1) {
+					Marker marker = standing(sender);
+					if (marker == null) {
+						error(sender, "지울 마커 위에 서 있거나, 그 마커를 바라보고 있어야 합니다. 이름을 직접 적어도 됩니다: /보트점프 삭제 <이름>");
+					} else {
+						removeMarker(sender, marker.name);
+					}
 				} else {
-					error(sender, "사용법: /보트점프 삭제 <이름> 또는 /보트점프 삭제 그룹 <이름>");
+					error(sender, "사용법: /보트점프 삭제 [이름] 또는 /보트점프 삭제 그룹 <이름>");
 				}
 			}
 			case "list" -> listMarkers(sender);
@@ -592,7 +600,7 @@ final class BoatJumpCommand implements TabExecutor, Listener {
 		if (position == 1) {
 			options.put("막대기", "마커 막대기를 받습니다.");
 			options.put("생성", "마커나 그룹을 만듭니다.");
-			options.put("삭제", "마커나 그룹을 지웁니다.");
+			options.put("삭제", "마커나 그룹을 지웁니다. 이름을 적지 않으면 지금 서 있거나 바라보는 마커를 지웁니다.");
 			options.put("리스트", "모든 마커를 봅니다.");
 			options.put("정보", "설정값을 봅니다. 이름을 적지 않으면 지금 서 있거나 바라보는 마커를 봅니다.");
 			options.put("설정", "설정값을 고칩니다. 뒤에 마커 이름(또는 기본값)과 항목, 값을 적습니다.");

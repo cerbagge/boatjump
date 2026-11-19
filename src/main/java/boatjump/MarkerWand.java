@@ -9,6 +9,7 @@ import java.util.Map;
 import java.util.UUID;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
+import net.kyori.adventure.text.format.TextDecoration;
 import org.bukkit.Bukkit;
 import org.bukkit.Color;
 import org.bukkit.Location;
@@ -202,13 +203,12 @@ final class MarkerWand implements Listener {
 			boxes.computeIfAbsent(box, key -> spawnBox(player, key));
 		}
 
-		// 서 있거나 바라보는 마커의 이름과 설정값을 알려 준다.
+		// 서 있거나 바라보는 마커의 이름을 알려 준다. 이름이 설정 항목처럼 보이지 않도록 이름만 다른 색으로 굵게 쓴다.
 		Marker target = store.target(player);
 		if (target != null) {
-			player.sendActionBar(Component.text(
-				"마커 " + target.name + (target.group != null ? " [그룹 " + target.group + "]" : "")
-					+ "  " + store.settingsOf(target).describe(),
-				NamedTextColor.AQUA));
+			player.sendActionBar(Component.text("마커 이름: ", NamedTextColor.GRAY)
+				.append(Component.text(target.name, NamedTextColor.YELLOW, TextDecoration.BOLD))
+				.append(Component.text(target.group != null ? "  (그룹: " + target.group + ")" : "", NamedTextColor.AQUA)));
 		}
 	}
 
