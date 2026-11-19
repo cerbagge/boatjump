@@ -382,6 +382,7 @@ final class BoatJumpCommand implements TabExecutor, Listener {
 		}
 		store.save();
 		info(sender, "기본값을 고쳤습니다: " + store.defaults().describe());
+		warn(sender, store.defaults().speedWarning(key));
 	}
 
 	private void setOn(CommandSender sender, Marker marker, String key, String[] tokens) {
@@ -398,6 +399,7 @@ final class BoatJumpCommand implements TabExecutor, Listener {
 		marker.customized = true;
 		store.save();
 		info(sender, "마커 " + marker.name + "을(를) 고쳤습니다: " + marker.settings.describe());
+		warn(sender, marker.settings.speedWarning(key));
 	}
 
 	private void group(CommandSender sender, String[] args) {
@@ -530,6 +532,7 @@ final class BoatJumpCommand implements TabExecutor, Listener {
 		group.customized = true;
 		store.save();
 		info(sender, "그룹 " + group.name + "을(를) 고쳤습니다 (마커 " + store.members(group.name).size() + "개에 적용): " + group.settings.describe());
+		warn(sender, group.settings.speedWarning(key));
 	}
 
 	private void jumpBlock(CommandSender sender, String[] args) {
@@ -583,6 +586,13 @@ final class BoatJumpCommand implements TabExecutor, Listener {
 
 	private static void info(CommandSender sender, String text) {
 		sender.sendMessage(Component.text(text, NamedTextColor.AQUA));
+	}
+
+	/** 주의할 점이 있을 때에만 노란색으로 알린다. */
+	private static void warn(CommandSender sender, String text) {
+		if (text != null) {
+			sender.sendMessage(Component.text(text, NamedTextColor.YELLOW));
+		}
 	}
 
 	private static void error(CommandSender sender, String text) {
