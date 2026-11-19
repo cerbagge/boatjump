@@ -13,17 +13,20 @@ import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.event.ClickEvent;
 import net.kyori.adventure.text.event.HoverEvent;
 import net.kyori.adventure.text.format.NamedTextColor;
+import org.bukkit.Location;
 import org.bukkit.Material;
+import org.bukkit.block.Block;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandSender;
 import org.bukkit.command.TabExecutor;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
+import org.bukkit.util.Vector;
 
 /**
  * /보트점프(/boatjump) 명령어. 한국어와 영어로 모두 입력할 수 있다.
- * 이름을 적지 않는 명령어는 플레이어가 지금 서 있는 마커(또는 그 마커의 그룹)를 대상으로 한다.
+ * 이름을 적지 않는 명령어는 플레이어가 지금 서 있거나 바라보는 마커(또는 그 마커의 그룹)를 대상으로 한다.
  */
 final class BoatJumpCommand implements TabExecutor, Listener {
 	/** 도움말 한 줄. 사용법과 설명, 클릭했을 때 입력창에 채울 내용. */
@@ -36,17 +39,16 @@ final class BoatJumpCommand implements TabExecutor, Listener {
 		new Help("/보트점프 삭제 <이름>", "마커를 지웁니다.", "삭제 "),
 		new Help("/보트점프 삭제 그룹 <이름>", "그룹을 지웁니다. 속해 있던 마커는 그룹의 설정값을 물려받고 남습니다.", "삭제 그룹 "),
 		new Help("/보트점프 리스트", "모든 마커의 이름과 그룹, 범위를 봅니다.", "리스트"),
-		new Help("/보트점프 정보", "지금 서 있는 마커의 설정값을 봅니다. 마커 밖에 서 있으면 기본값을 봅니다.", "정보"),
+		new Help("/보트점프 정보", "지금 서 있거나 바라보는 마커의 설정값을 봅니다. 그런 마커가 없으면 기본값을 봅니다.", "정보"),
 		new Help("/보트점프 정보 <이름>", "그 마커의 설정값을 봅니다. 이름에 기본값을 적으면 기본값을 봅니다.", "정보 "),
 		new Help("/보트점프 정보 그룹 <이름>", "그 그룹의 설정값과 속한 마커를 봅니다.", "정보 그룹 "),
-		new Help("/보트점프 설정 <항목> <값>", "지금 서 있는 마커의 설정값을 고칩니다. 마커 밖에 서 있으면 기본값을 고칩니다.", "설정 "),
+		new Help("/보트점프 설정 <항목> <값>", "지금 서 있거나 바라보는 마커의 설정값을 고칩니다. 그런 마커가 없으면 기본값을 고칩니다.", "설정 "),
 		new Help("/보트점프 설정 <이름> <항목> <값>", "그 마커의 설정값을 고칩니다. 이름에 기본값을 적으면 기본값을 고칩니다.", "설정 "),
-		new Help("/보트점프 그룹 추가 <이름>", "그룹 이름을 적으면 지금 서 있는 마커를 그 그룹에 넣습니다. "
-			+ "마커 이름을 적으면 그 마커를 지금 서 있는 마커의 그룹에 넣습니다.", "그룹 추가 "),
-		new Help("/보트점프 그룹 제거 <이름>", "그 마커를 그룹에서 뺍니다. 마커는 그룹의 설정값을 물려받습니다.", "그룹 제거 "),
+		new Help("/보트점프 그룹 추가 <그룹>", "지금 서 있거나 바라보는 마커를 그 그룹에 넣습니다. 없는 그룹이면 새로 만듭니다.", "그룹 추가 "),
+		new Help("/보트점프 그룹 제거 <그룹>", "지금 서 있거나 바라보는 마커를 그 그룹에서 뺍니다. 마커는 그룹의 설정값을 물려받습니다.", "그룹 제거 "),
 		new Help("/보트점프 그룹 리스트", "모든 그룹과 속한 마커를 봅니다.", "그룹 리스트"),
-		new Help("/보트점프 그룹 정보", "지금 서 있는 마커가 속한 그룹의 설정값을 봅니다.", "그룹 정보"),
-		new Help("/보트점프 그룹 설정 <항목> <값>", "지금 서 있는 마커가 속한 그룹의 설정값을 고칩니다. 그룹의 모든 마커에 적용됩니다.", "그룹 설정 "),
+		new Help("/보트점프 그룹 정보", "지금 서 있거나 바라보는 마커가 속한 그룹의 설정값을 봅니다.", "그룹 정보"),
+		new Help("/보트점프 그룹 설정 <항목> <값>", "지금 서 있거나 바라보는 마커가 속한 그룹의 설정값을 고칩니다. 그룹의 모든 마커에 적용됩니다.", "그룹 설정 "),
 		new Help("/보트점프 점프블록 추가 <블록...>", "보트가 한 칸 높이일 때 뛰어넘을 블록을 추가합니다.", "점프블록 추가 "),
 		new Help("/보트점프 점프블록 삭제 <블록...>", "보트가 뛰어넘을 블록을 목록에서 삭제합니다.", "점프블록 삭제 "),
 		new Help("/보트점프 점프블록 리스트", "보트가 뛰어넘는 블록의 목록을 봅니다.", "점프블록 리스트"));
@@ -94,6 +96,8 @@ final class BoatJumpCommand implements TabExecutor, Listener {
 	private static final Pattern NAME = Pattern.compile("[0-9A-Za-z가-힣_-]{1,32}");
 	private static final String GROUP_WORD = "그룹";
 	private static final String DEFAULT_WORD = "기본값";
+	/** 바라보는 마커를 찾을 때 시선을 따라가는 최대 거리(블록). */
+	private static final int LOOK_DISTANCE = 64;
 
 	private final MarkerStore store;
 	private final MarkerWand wand;
@@ -212,7 +216,7 @@ final class BoatJumpCommand implements TabExecutor, Listener {
 			error(sender, "플레이어만 사용할 수 있습니다.");
 			return;
 		}
-		if (!validNewName(sender, name)) {
+		if (!validNewName(sender, name, false)) {
 			return;
 		}
 		MarkerWand.Selection selection = wand.selection(player);
@@ -228,12 +232,12 @@ final class BoatJumpCommand implements TabExecutor, Listener {
 	}
 
 	private void createGroup(CommandSender sender, String name) {
-		if (!validNewName(sender, name)) {
+		if (!validNewName(sender, name, true)) {
 			return;
 		}
 		store.addGroup(new Group(name, store.defaults().copy()));
 		store.save();
-		info(sender, "그룹 " + name + "을(를) 만들었습니다. 마커 위에 서서 /보트점프 그룹 추가 " + name + " 을 입력하면 그 마커가 그룹에 들어갑니다.");
+		info(sender, "그룹 " + name + "을(를) 만들었습니다. 마커 위에 서거나 마커를 바라보면서 /보트점프 그룹 추가 " + name + " 을 입력하면 그 마커가 그룹에 들어갑니다.");
 	}
 
 	private void removeMarker(CommandSender sender, String name) {
@@ -273,15 +277,41 @@ final class BoatJumpCommand implements TabExecutor, Listener {
 			+ ") ~ (" + marker.maxX + ", " + marker.maxY + ", " + marker.maxZ + ")";
 	}
 
-	/** 플레이어가 지금 서 있는 마커. 마커 밖에 서 있거나 플레이어가 아니면 null이다. */
+	/**
+	 * 이름을 적지 않은 명령어가 대상으로 삼는 마커. 플레이어가 서 있는 마커이고, 마커 밖에 서 있으면 바라보는 마커이다.
+	 * 둘 다 없거나 플레이어가 아니면 null이다.
+	 */
 	private Marker standing(CommandSender sender) {
-		return sender instanceof Player player ? store.at(player.getLocation()) : null;
+		if (!(sender instanceof Player player)) {
+			return null;
+		}
+		Marker marker = store.at(player.getLocation());
+		if (marker != null) {
+			return marker;
+		}
+
+		// 시선을 따라가며 처음 만나는 마커를 찾는다. 시선이 블록에 막히면 그 블록까지만 본다.
+		Location eye = player.getEyeLocation();
+		Vector direction = eye.getDirection();
+		Block target = player.getTargetBlockExact(LOOK_DISTANCE);
+		double reach = target != null ? eye.distance(target.getLocation().add(0.5, 0.5, 0.5)) + 1 : LOOK_DISTANCE;
+		String world = eye.getWorld().getName();
+		for (double d = 0; d <= reach; d += 0.25) {
+			marker = store.find(world,
+				(int) Math.floor(eye.getX() + direction.getX() * d),
+				(int) Math.floor(eye.getY() + direction.getY() * d),
+				(int) Math.floor(eye.getZ() + direction.getZ() * d));
+			if (marker != null) {
+				return marker;
+			}
+		}
+		return null;
 	}
 
 	private void infoHere(CommandSender sender) {
 		Marker marker = standing(sender);
 		if (marker == null) {
-			info(sender, "마커 밖입니다. 기본값: " + store.defaults().describe());
+			info(sender, "서 있거나 바라보는 마커가 없습니다. 기본값: " + store.defaults().describe());
 		} else {
 			showMarker(sender, marker);
 		}
@@ -355,7 +385,7 @@ final class BoatJumpCommand implements TabExecutor, Listener {
 	private void setOn(CommandSender sender, Marker marker, String key, String[] tokens) {
 		if (marker.group != null) {
 			error(sender, "마커 " + marker.name + "은(는) 그룹 " + marker.group + "에 속해 있어서 그룹의 설정값을 씁니다. "
-				+ "그룹의 값을 고치려면 /보트점프 그룹 설정 <항목> <값> 을, 이 마커만 따로 고치려면 먼저 /보트점프 그룹 제거 " + marker.name + " 을 쓰십시오.");
+				+ "그룹의 값을 고치려면 /보트점프 그룹 설정 <항목> <값> 을, 이 마커만 따로 고치려면 먼저 /보트점프 그룹 제거 " + marker.group + " 을 쓰십시오.");
 			return;
 		}
 		String problem = marker.settings.set(key, tokens);
@@ -375,14 +405,14 @@ final class BoatJumpCommand implements TabExecutor, Listener {
 				if (args.length == 3) {
 					groupAdd(sender, args[2]);
 				} else {
-					error(sender, "사용법: /보트점프 그룹 추가 <그룹 이름 또는 마커 이름>");
+					error(sender, "사용법: /보트점프 그룹 추가 <그룹>");
 				}
 			}
 			case "remove" -> {
 				if (args.length == 3) {
 					groupRemove(sender, args[2]);
 				} else {
-					error(sender, "사용법: /보트점프 그룹 제거 <마커 이름>");
+					error(sender, "사용법: /보트점프 그룹 제거 <그룹>");
 				}
 			}
 			case "list" -> listGroups(sender);
@@ -422,7 +452,7 @@ final class BoatJumpCommand implements TabExecutor, Listener {
 	private Group standingGroup(CommandSender sender) {
 		Marker marker = standing(sender);
 		if (marker == null) {
-			error(sender, "그룹에 속한 마커 위에 서 있어야 합니다. 그룹 이름을 직접 적어도 됩니다.");
+			error(sender, "그룹에 속한 마커 위에 서 있거나, 그 마커를 바라보고 있어야 합니다. 그룹 이름을 직접 적어도 됩니다.");
 			return null;
 		}
 		if (marker.group == null) {
@@ -432,46 +462,50 @@ final class BoatJumpCommand implements TabExecutor, Listener {
 		return store.group(marker.group);
 	}
 
+	/** 지금 서 있거나 바라보는 마커를 그 그룹에 넣는다. 없는 그룹이면 새로 만든다. */
 	private void groupAdd(CommandSender sender, String name) {
-		Group group = store.group(name);
-		Marker target;
-		if (group != null) {
-			// 그룹 이름을 적었으면, 지금 서 있는 마커를 그 그룹에 넣는다.
-			target = standing(sender);
-			if (target == null) {
-				error(sender, "그룹 " + name + "에 넣을 마커 위에 서 있어야 합니다.");
-				return;
-			}
-		} else if (store.get(name) != null) {
-			// 마커 이름을 적었으면, 그 마커를 지금 서 있는 마커의 그룹에 넣는다.
-			group = standingGroup(sender);
-			if (group == null) {
-				return;
-			}
-			target = store.get(name);
-		} else {
-			error(sender, "그런 이름의 그룹이나 마커가 없습니다: " + name + " (그룹은 /보트점프 생성 그룹 <이름> 으로 만듭니다)");
+		Marker target = standing(sender);
+		if (target == null) {
+			error(sender, "그룹 " + name + "에 넣을 마커 위에 서 있거나, 그 마커를 바라보고 있어야 합니다.");
 			return;
 		}
-		target.group = group.name;
+		Group group = store.group(name);
+		boolean created = group == null;
+		if (created) {
+			if (!validNewName(sender, name, true)) {
+				return;
+			}
+			group = new Group(name, store.defaults().copy());
+			store.addGroup(group);
+		}
+		if (name.equals(target.group)) {
+			info(sender, "마커 " + target.name + "은(는) 이미 그룹 " + name + "에 속해 있습니다.");
+			return;
+		}
+		target.group = name;
 		store.save();
-		info(sender, "마커 " + target.name + "을(를) 그룹 " + group.name + "에 넣었습니다. 이제 그룹의 설정값을 씁니다.");
+		info(sender, (created ? "그룹 " + name + "을(를) 새로 만들고, " : "") + "마커 " + target.name + "을(를) 그룹 " + name
+			+ "에 넣었습니다. 이제 그룹의 설정값을 씁니다.");
 	}
 
+	/** 지금 서 있거나 바라보는 마커를 그 그룹에서 뺀다. */
 	private void groupRemove(CommandSender sender, String name) {
-		Marker marker = store.get(name);
-		if (marker == null) {
-			error(sender, "없는 마커입니다: " + name);
+		if (store.group(name) == null) {
+			error(sender, "없는 그룹입니다: " + name);
 			return;
 		}
-		if (marker.group == null) {
-			error(sender, "마커 " + name + "은(는) 그룹에 속해 있지 않습니다.");
+		Marker target = standing(sender);
+		if (target == null) {
+			error(sender, "그룹 " + name + "에서 뺄 마커 위에 서 있거나, 그 마커를 바라보고 있어야 합니다.");
 			return;
 		}
-		String group = marker.group;
-		store.leaveGroup(marker);
+		if (!name.equals(target.group)) {
+			error(sender, "마커 " + target.name + "은(는) 그룹 " + name + "에 속해 있지 않습니다.");
+			return;
+		}
+		store.leaveGroup(target);
 		store.save();
-		info(sender, "마커 " + name + "을(를) 그룹 " + group + "에서 뺐습니다. 그룹의 설정값을 물려받았습니다.");
+		info(sender, "마커 " + target.name + "을(를) 그룹 " + name + "에서 뺐습니다. 그룹의 설정값을 물려받았습니다.");
 	}
 
 	private void listGroups(CommandSender sender) {
@@ -528,8 +562,8 @@ final class BoatJumpCommand implements TabExecutor, Listener {
 			+ "했습니다. 현재 " + store.jumpBlocks().size() + "개입니다.");
 	}
 
-	/** 새 마커나 그룹의 이름으로 쓸 수 있는지 확인한다. 명령어의 낱말과 헷갈리는 이름, 이미 있는 이름은 막는다. */
-	private boolean validNewName(CommandSender sender, String name) {
+	/** 새 마커(또는 그룹)의 이름으로 쓸 수 있는지 확인한다. 명령어의 낱말과 헷갈리는 이름, 이미 있는 이름은 막는다. */
+	private boolean validNewName(CommandSender sender, String name, boolean group) {
 		if (!NAME.matcher(name).matches()) {
 			error(sender, "이름은 한글, 영문, 숫자, _, - 로 32자 이내여야 합니다: " + name);
 			return false;
@@ -538,9 +572,8 @@ final class BoatJumpCommand implements TabExecutor, Listener {
 			error(sender, "명령어에서 쓰는 낱말은 이름으로 쓸 수 없습니다: " + name);
 			return false;
 		}
-		// 그룹 추가 명령어가 이름만으로 그룹과 마커를 구분하므로, 둘이 같은 이름을 쓸 수 없다.
-		if (store.get(name) != null || store.group(name) != null) {
-			error(sender, "이미 있는 마커 또는 그룹의 이름입니다: " + name);
+		if (group ? store.group(name) != null : store.get(name) != null) {
+			error(sender, "이미 있는 " + (group ? "그룹" : "마커") + "의 이름입니다: " + name);
 			return false;
 		}
 		return true;
@@ -600,8 +633,8 @@ final class BoatJumpCommand implements TabExecutor, Listener {
 			options.put("생성", "마커나 그룹을 만듭니다.");
 			options.put("삭제", "마커나 그룹을 지웁니다.");
 			options.put("리스트", "모든 마커를 봅니다.");
-			options.put("정보", "설정값을 봅니다. 이름을 적지 않으면 지금 서 있는 마커를 봅니다.");
-			options.put("설정", "설정값을 고칩니다. 이름을 적지 않으면 지금 서 있는 마커를 고칩니다.");
+			options.put("정보", "설정값을 봅니다. 이름을 적지 않으면 지금 서 있거나 바라보는 마커를 봅니다.");
+			options.put("설정", "설정값을 고칩니다. 이름을 적지 않으면 지금 서 있거나 바라보는 마커를 고칩니다.");
 			options.put("그룹", "그룹에 마커를 넣거나 빼고, 그룹의 설정값을 다룹니다.");
 			options.put("점프블록", "보트가 뛰어넘을 블록을 관리합니다.");
 		} else if (sub.equals("create") && position == 2) {
@@ -633,21 +666,12 @@ final class BoatJumpCommand implements TabExecutor, Listener {
 		} else if (sub.equals("group")) {
 			String action = position >= 3 ? GROUP_ACTIONS.getOrDefault(args[1].toLowerCase(Locale.ROOT), "") : "";
 			if (position == 2) {
-				options.put("추가", "그룹 이름을 적으면 지금 서 있는 마커를 그 그룹에 넣고, 마커 이름을 적으면 그 마커를 지금 서 있는 마커의 그룹에 넣습니다.");
-				options.put("제거", "마커를 그룹에서 뺍니다.");
+				options.put("추가", "지금 서 있거나 바라보는 마커를 그룹에 넣습니다. 뒤에 그룹 이름을 적으며, 없는 그룹이면 새로 만듭니다.");
+				options.put("제거", "지금 서 있거나 바라보는 마커를 그룹에서 뺍니다. 뒤에 그룹 이름을 적습니다.");
 				options.put("리스트", "모든 그룹을 봅니다.");
-				options.put("정보", "지금 서 있는 마커가 속한 그룹의 설정값을 봅니다.");
-				options.put("설정", "지금 서 있는 마커가 속한 그룹의 설정값을 고칩니다.");
-			} else if (action.equals("add") && position == 3) {
-				addGroups(options);
-				addMarkers(options);
-			} else if (action.equals("remove") && position == 3) {
-				for (Marker marker : store.all()) {
-					if (marker.group != null) {
-						options.put(marker.name, "마커 [그룹 " + marker.group + "]");
-					}
-				}
-			} else if (action.equals("info") && position == 3) {
+				options.put("정보", "지금 서 있거나 바라보는 마커가 속한 그룹의 설정값을 봅니다.");
+				options.put("설정", "지금 서 있거나 바라보는 마커가 속한 그룹의 설정값을 고칩니다.");
+			} else if ((action.equals("add") || action.equals("remove") || action.equals("info")) && position == 3) {
 				addGroups(options);
 			} else if (action.equals("set")) {
 				boolean named = position >= 4 && key(args[2]) == null;
