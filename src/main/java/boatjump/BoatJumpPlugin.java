@@ -1,7 +1,9 @@
 package boatjump;
 
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
@@ -96,6 +98,7 @@ public final class BoatJumpPlugin extends JavaPlugin implements Listener {
 		BoatJumpCommand command = new BoatJumpCommand(store, wand);
 		getCommand("boatjump").setExecutor(command);
 		getCommand("boatjump").setTabCompleter(command);
+		getServer().getPluginManager().registerEvents(command, this);
 	}
 
 	@Override
@@ -227,7 +230,9 @@ public final class BoatJumpPlugin extends JavaPlugin implements Listener {
 			// 단마다 착지했다가 다시 오르면, 다음 단의 옆면에 먼저 부딪혀서 멈추기 때문이다.
 			int targetY = feetY + 1;
 			double iceDistance = d;
-			int steps = 1;
+			// 각 단이 시작되는 거리. 느리게 갈 때 맨 윗단 높이까지 미리 떠오르지 않고, 단에 가까워질 때마다 한 단씩 오르는 데 쓴다.
+			List<Double> stepDistances = new ArrayList<>();
+			stepDistances.add(d);
 			for (double e = d + SCAN_STEP; e <= iceDistance + STAIR_GAP; e += SCAN_STEP) {
 				int next = probe(world, to.getX() + dirX * e, to.getZ() + dirZ * e, half, targetY);
 				if (next == SOLID) {
@@ -236,11 +241,11 @@ public final class BoatJumpPlugin extends JavaPlugin implements Listener {
 				if (next == ICE) {
 					targetY++;
 					iceDistance = e;
-					steps++;
+					stepDistances.add(e);
 				}
 			}
 
-			startClimb(boat, targetY, to, iceDistance, steps, motionX, motionZ);
+			startClimb(boat, targetY, to, stepDistances, motionX, motionZ);
 			return;
 		}
 	}
@@ -266,11 +271,16 @@ public final class BoatJumpPlugin extends JavaPlugin implements Listener {
 		return result;
 	}
 
-	private void startClimb(Boat boat, double targetY, Location start, double iceDistance, int steps, double motionX, double motionZ) {
+	private void startClimb(Boat boat, int targetY, Location start, List<Double> stepDistances, double motionX, double motionZ) {
 		UUID id = boat.getUniqueId();
 		climbing.add(id);
+		int steps = stepDistances.size();
+		double iceDistance = stepDistances.getLast();
+		double speed = Math.hypot(motionX, motionZ);
+		// 이 거리 안에 들어온 단까지만 미리 올라간다. 얼음을 처음 감지할 때 쓰는 거리와 같다.
+		double ahead = boat.getWidth() / 2 + 0.3 + speed * LOOKAHEAD_TICKS;
 		// 임시 진단용 기록: 동작이 안정되면 제거한다.
-		getLogger().info("climb start: type=" + boat.getType() + " speed=" + Math.hypot(motionX, motionZ)
+		getLogger().info("climb start: type=" + boat.getType() + " speed=" + speed
 			+ " start=" + start.getX() + "," + start.getY() + "," + start.getZ() + " targetY=" + targetY + " iceDistance=" + iceDistance + " steps=" + steps);
 
 		new BukkitRunnable() {
@@ -279,8 +289,8 @@ public final class BoatJumpPlugin extends JavaPlugin implements Listener {
 			private int ticks;
 			// 착지 단계에 들어선 뒤로 지난 틱 수. 0이면 아직 착지 단계가 아니다.
 			private int landingTicks;
-			// 단이 많을수록 오르는 데 시간이 더 걸리므로, 포기하는 시간도 그만큼 늘린다.
-			private final int timeout = TIMEOUT_TICKS + 6 * (steps - 1);
+			// 맨 윗단까지 가는 데 걸리는 시간에 여유를 더한 만큼 기다린다. 느린 보트일수록 오래 기다린다.
+			private final int timeout = TIMEOUT_TICKS + (int) (iceDistance / speed * 1.5);
 
 			@Override
 			public void run() {
@@ -307,7 +317,17 @@ public final class BoatJumpPlugin extends JavaPlugin implements Listener {
 					return;
 				}
 
-				double rise = Math.clamp(targetY - predictedY + OVERSHOOT, 0, MAX_RISE_SPEED);
+				// 지금까지 나아간 거리를 기준으로, 가까이 온 단까지만 목표 높이로 삼는다.
+				// 느린 보트가 맨 윗단 높이까지 한꺼번에 떠올라서 공중에 떠 있는 일을 막는다.
+				double traveledSoFar = speed * ticks;
+				int reached = 1;
+				while (reached < steps && stepDistances.get(reached) <= traveledSoFar + ahead) {
+					reached++;
+				}
+				int stageY = targetY - steps + reached;
+				boolean lastStage = reached == steps;
+
+				double rise = Math.clamp(stageY - predictedY + OVERSHOOT, 0, MAX_RISE_SPEED);
 				// 부동소수점 오차 때문에 정확히 0이 되지 않으므로, 충분히 작으면 다 올라온 것으로 본다.
 				if (rise >= 1.0E-6) {
 					predictedY += rise;
@@ -316,9 +336,9 @@ public final class BoatJumpPlugin extends JavaPlugin implements Listener {
 				}
 
 				Location actual = boat.getLocation();
-				double height = actual.getY() - targetY;
+				double height = actual.getY() - stageY;
 
-				if (height >= -0.05) {
+				if (lastStage && height >= -0.05) {
 					// 실제 보트가 얼음 위에 걸쳐 있으면 착지 단계로 넘어간다.
 					if (isSupported(boat, actual, targetY)) {
 						landingTicks = 1;

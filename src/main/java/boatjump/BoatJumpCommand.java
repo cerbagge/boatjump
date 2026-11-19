@@ -1,22 +1,53 @@
 package boatjump;
 
+import com.destroystokyo.paper.event.server.AsyncTabCompleteEvent;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.ConcurrentModificationException;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.regex.Pattern;
 import net.kyori.adventure.text.Component;
+import net.kyori.adventure.text.event.ClickEvent;
+import net.kyori.adventure.text.event.HoverEvent;
 import net.kyori.adventure.text.format.NamedTextColor;
 import org.bukkit.Material;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandSender;
 import org.bukkit.command.TabExecutor;
 import org.bukkit.entity.Player;
+import org.bukkit.event.EventHandler;
+import org.bukkit.event.Listener;
 
 /** /boatjump 명령어. 마커 막대기 지급, 마커와 그룹 관리, 설정값 수정, 뛰어넘을 블록 관리를 맡는다. */
-final class BoatJumpCommand implements TabExecutor {
-	private static final List<String> SUBCOMMANDS =
-		List.of("markers", "create", "remove", "list", "info", "set", "group", "jumpblock");
+final class BoatJumpCommand implements TabExecutor, Listener {
+	/** 하위 명령어 하나의 사용법과 설명. 도움말과 자동 완성의 설명에 함께 쓴다. */
+	private record Sub(String usage, String description) { }
+
+	private static final Map<String, Sub> SUBCOMMANDS = new LinkedHashMap<>();
+
+	static {
+		SUBCOMMANDS.put("markers", new Sub("/boatjump markers",
+			"마커 막대기를 받습니다. 블록을 좌클릭하면 첫째 지점, 우클릭하면 둘째 지점이 지정됩니다."));
+		SUBCOMMANDS.put("create", new Sub("/boatjump create <이름> [그룹]",
+			"막대기로 선택한 범위로 마커를 만듭니다. 그룹을 적으면 그 그룹에 넣습니다."));
+		SUBCOMMANDS.put("remove", new Sub("/boatjump remove <이름>",
+			"마커를 지웁니다."));
+		SUBCOMMANDS.put("list", new Sub("/boatjump list",
+			"모든 마커의 이름과 그룹, 범위를 봅니다."));
+		SUBCOMMANDS.put("info", new Sub("/boatjump info <이름|default>",
+			"마커의 설정값을 봅니다. default를 적으면 마커 밖에서 쓰이는 기본값을 봅니다."));
+		SUBCOMMANDS.put("set", new Sub("/boatjump set <이름|default> <항목> <값>",
+			"설정값을 고칩니다. 그룹에 속한 마커를 고치면 같은 그룹의 마커가 모두 바뀝니다. "
+				+ "값에는 숫자, 또는 random [최소 최대] [틱]을 쓸 수 있습니다."));
+		SUBCOMMANDS.put("group", new Sub("/boatjump group <이름> <그룹|none>",
+			"마커의 그룹을 지정하거나 해제합니다. 없는 마커 이름이면 선택한 범위로 새로 만듭니다."));
+		SUBCOMMANDS.put("jumpblock", new Sub("/boatjump jumpblock <add|remove|list> [블록...]",
+			"보트가 한 칸 높이일 때 뛰어넘을 블록을 추가하거나, 삭제하거나, 목록을 봅니다."));
+	}
+
 	private static final Pattern NAME = Pattern.compile("[0-9A-Za-z가-힣_-]{1,32}");
 	/** 기본 설정값을 가리키는 예약된 이름. */
 	private static final String DEFAULT = "default";
@@ -47,16 +78,14 @@ final class BoatJumpCommand implements TabExecutor {
 	}
 
 	private void help(CommandSender sender) {
-		info(sender, "/boatjump markers - 마커 막대기를 받습니다. 좌클릭은 첫째 지점, 우클릭은 둘째 지점입니다.");
-		info(sender, "/boatjump create <이름> [그룹] - 선택한 범위로 마커를 만듭니다.");
-		info(sender, "/boatjump remove <이름> - 마커를 지웁니다.");
-		info(sender, "/boatjump list - 마커 목록을 봅니다.");
-		info(sender, "/boatjump info <이름|default> - 설정값을 봅니다.");
-		info(sender, "/boatjump set <이름|default> <항목> <값> - 설정값을 고칩니다. 같은 그룹의 마커도 함께 바뀝니다.");
-		info(sender, "  항목: " + String.join(", ", BoostSettings.KEYS));
-		info(sender, "  값: 숫자, 또는 random [최소 최대] [틱] (틱을 생략하면 " + Value.DEFAULT_PERIOD + "틱)");
-		info(sender, "/boatjump group <이름> <그룹|none> - 마커의 그룹을 지정하거나 해제합니다. 없는 이름이면 선택한 범위로 새로 만듭니다.");
-		info(sender, "/boatjump jumpblock <add|remove|list> [블록...] - 보트가 뛰어넘을 블록을 관리합니다.");
+		info(sender, "BoatJump 명령어 (마우스를 올리면 설명이 보이고, 클릭하면 입력창에 채워집니다)");
+		SUBCOMMANDS.forEach((name, sub) -> sender.sendMessage(Component.text(sub.usage(), NamedTextColor.AQUA)
+			.hoverEvent(HoverEvent.showText(Component.text(sub.description())))
+			.clickEvent(ClickEvent.suggestCommand("/boatjump " + name + " "))));
+		sender.sendMessage(Component.text("설정 항목: ", NamedTextColor.GRAY).append(Component.join(
+			net.kyori.adventure.text.JoinConfiguration.separator(Component.text(", ", NamedTextColor.GRAY)),
+			BoostSettings.KEYS.stream().map(key -> Component.text(key, NamedTextColor.AQUA)
+				.hoverEvent(HoverEvent.showText(Component.text(BoostSettings.DESCRIPTIONS.get(key))))).toList())));
 	}
 
 	private void giveWand(CommandSender sender) {
@@ -282,40 +311,99 @@ final class BoatJumpCommand implements TabExecutor {
 
 	@Override
 	public List<String> onTabComplete(CommandSender sender, Command command, String label, String[] args) {
+		return List.copyOf(suggest(args).keySet());
+	}
+
+	/**
+	 * 자동 완성 목록의 각 항목에 한국어 설명을 붙인다. 입력창의 목록에서 항목에 마우스를 올리면 보인다.
+	 * 이 이벤트는 서버의 주 스레드가 아닌 곳에서 불릴 수 있으므로, 그 사이에 마커가 바뀌어서 읽기에 실패하면 설명 없는 기본 목록에 맡긴다.
+	 */
+	@EventHandler
+	public void onAsyncTabComplete(AsyncTabCompleteEvent event) {
+		String buffer = event.getBuffer();
+		if (!event.isCommand() || !event.getSender().hasPermission("boatjump.admin")) {
+			return;
+		}
+		String lower = buffer.toLowerCase(Locale.ROOT);
+		if (!lower.startsWith("/boatjump ") && !lower.startsWith("/boatjump:boatjump ")) {
+			return;
+		}
+
+		String[] args = buffer.substring(buffer.indexOf(' ') + 1).split(" ", -1);
+		try {
+			List<AsyncTabCompleteEvent.Completion> completions = new ArrayList<>();
+			suggest(args).forEach((option, description) -> completions.add(description == null
+				? AsyncTabCompleteEvent.Completion.completion(option)
+				: AsyncTabCompleteEvent.Completion.completion(option, Component.text(description))));
+			event.completions(completions);
+			event.setHandled(true);
+		} catch (ConcurrentModificationException e) {
+			// 읽는 도중에 마커가 바뀌었다. 설명 없는 기본 자동 완성에 맡긴다.
+		}
+	}
+
+	/** 지금까지 입력한 내용에 이어서 올 수 있는 항목과 그 설명. 설명이 없는 항목은 값이 null이다. */
+	private Map<String, String> suggest(String[] args) {
 		String sub = args[0].toLowerCase(Locale.ROOT);
-		List<String> options = new ArrayList<>();
+		Map<String, String> options = new LinkedHashMap<>();
 		if (args.length == 1) {
-			options.addAll(SUBCOMMANDS);
+			SUBCOMMANDS.forEach((name, info) -> options.put(name, info.description()));
 		} else if (args.length == 2) {
 			switch (sub) {
-				case "remove", "group" -> store.all().forEach(marker -> options.add(marker.name));
+				case "remove", "group" -> addMarkers(options);
 				case "info", "set" -> {
-					options.add(DEFAULT);
-					store.all().forEach(marker -> options.add(marker.name));
+					options.put(DEFAULT, "마커 밖에서 쓰이는 기본 설정값입니다. 벽 튕김, 탄성, 슬라임은 마커 밖에서도 이 값으로 동작합니다.");
+					addMarkers(options);
 				}
-				case "jumpblock" -> options.addAll(List.of("add", "remove", "list"));
+				case "jumpblock" -> {
+					options.put("add", "보트가 뛰어넘을 블록을 추가합니다. 여러 개를 띄어 써서 한 번에 넣을 수 있습니다.");
+					options.put("remove", "보트가 뛰어넘을 블록을 목록에서 삭제합니다.");
+					options.put("list", "보트가 뛰어넘는 블록의 목록을 봅니다.");
+				}
 				default -> { }
 			}
 		} else if (args.length == 3 && sub.equals("set")) {
-			options.addAll(BoostSettings.KEYS);
+			BoostSettings.KEYS.forEach(key -> options.put(key, BoostSettings.DESCRIPTIONS.get(key)));
 		} else if (args.length == 4 && sub.equals("set")) {
-			options.addAll(args[2].equalsIgnoreCase("enabled") ? List.of("true", "false") : List.of("random"));
+			if (args[2].equalsIgnoreCase("enabled")) {
+				options.put("true", "마커의 속도 변화를 켭니다.");
+				options.put("false", "마커의 속도 변화를 끕니다. 튕김 관련 항목은 그대로 동작합니다.");
+			} else if (!args[2].equalsIgnoreCase("interval")) {
+				options.put("random", "정해진 틱마다 값이 무작위로 바뀝니다. 형식: random [최소 최대] [틱] "
+					+ "(범위를 생략하면 항목별 기본 범위, 틱을 생략하면 " + Value.DEFAULT_PERIOD + "틱)");
+			}
 		} else if (args.length == 3 && (sub.equals("group") || sub.equals("create"))) {
-			options.addAll(store.groups());
+			for (String group : store.groups()) {
+				options.put(group, "그룹 " + group + " (마커 " + store.members(group).size() + "개)");
+			}
 			if (sub.equals("group")) {
-				options.add("none");
+				options.put("none", "그룹에 넣지 않습니다. 이미 그룹에 속한 마커이면 그룹을 해제합니다.");
 			}
 		} else if (sub.equals("jumpblock") && args[1].equalsIgnoreCase("remove")) {
-			store.jumpBlocks().forEach(material -> options.add(material.getKey().getKey()));
+			store.jumpBlocks().forEach(material -> options.put(material.getKey().getKey(), null));
 		} else if (sub.equals("jumpblock") && args[1].equalsIgnoreCase("add")) {
 			for (Material material : Material.values()) {
 				if (material.isBlock()) {
-					options.add(material.getKey().getKey());
+					options.put(material.getKey().getKey(), null);
 				}
 			}
 		}
 
 		String typed = args[args.length - 1].toLowerCase(Locale.ROOT);
-		return options.stream().filter(option -> option.toLowerCase(Locale.ROOT).startsWith(typed)).limit(50).toList();
+		Map<String, String> matching = new LinkedHashMap<>();
+		for (Map.Entry<String, String> option : options.entrySet()) {
+			if (matching.size() < 50 && option.getKey().toLowerCase(Locale.ROOT).startsWith(typed)) {
+				matching.put(option.getKey(), option.getValue());
+			}
+		}
+		return matching;
+	}
+
+	private void addMarkers(Map<String, String> options) {
+		for (Marker marker : store.all()) {
+			options.put(marker.name, "마커" + (marker.group != null ? " [그룹 " + marker.group + "]" : "")
+				+ " (" + marker.minX + ", " + marker.minY + ", " + marker.minZ
+				+ ") ~ (" + marker.maxX + ", " + marker.maxY + ", " + marker.maxZ + ")");
+		}
 	}
 }

@@ -65,7 +65,7 @@ final class MarkerStore {
 			}
 			Marker marker = new Marker(name, entry.getString("world"),
 				min.get(0), min.get(1), min.get(2), max.get(0), max.get(1), max.get(2),
-				entry.getString("group"), BoostSettings.load(entry));
+				entry.getString("group"), BoostSettings.load(entry.getConfigurationSection("settings")));
 			marker.customized = entry.getBoolean("customized");
 			markers.put(name, marker);
 		}
@@ -83,7 +83,8 @@ final class MarkerStore {
 			entry.set("max", List.of(marker.maxX, marker.maxY, marker.maxZ));
 			entry.set("group", marker.group);
 			entry.set("customized", marker.customized);
-			marker.settings.save(entry);
+			// 범위의 max와 설정 항목의 max가 같은 이름이므로, 설정값은 반드시 하위 구역에 따로 저장한다.
+			marker.settings.save(entry.createSection("settings"));
 		}
 		try {
 			yaml.save(file);
