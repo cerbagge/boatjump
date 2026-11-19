@@ -81,6 +81,7 @@ public final class BoatJumpPlugin extends JavaPlugin implements Listener {
 	private final Set<UUID> climbing = new HashSet<>();
 	private final Map<Boat, BoatState> states = new WeakHashMap<>();
 	private MarkerStore store;
+	private MarkerWand wand;
 
 	@Override
 	public void onEnable() {
@@ -88,13 +89,18 @@ public final class BoatJumpPlugin extends JavaPlugin implements Listener {
 		store = new MarkerStore(new java.io.File(getDataFolder(), "markers.yml"), getLogger());
 		store.load();
 
-		MarkerWand wand = new MarkerWand(this, store);
+		wand = new MarkerWand(this, store);
 		getServer().getPluginManager().registerEvents(this, this);
 		getServer().getPluginManager().registerEvents(wand, this);
 
 		BoatJumpCommand command = new BoatJumpCommand(store, wand);
 		getCommand("boatjump").setExecutor(command);
 		getCommand("boatjump").setTabCompleter(command);
+	}
+
+	@Override
+	public void onDisable() {
+		wand.removeAll();
 	}
 
 	@EventHandler(ignoreCancelled = true)
