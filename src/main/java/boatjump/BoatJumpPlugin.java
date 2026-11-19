@@ -23,7 +23,7 @@ import org.bukkit.plugin.java.JavaPlugin;
 import org.bukkit.scheduler.BukkitRunnable;
 
 /**
- * 플레이어가 조종하는 보트의 진행 방향에 한 칸 높이의 뛰어넘을 블록(기본값은 얼음 계열)이 있으면,
+ * 플레이어가 조종하는 보트의 진행 방향에 뛰어넘을 블록(기본값은 얼음 계열)으로 된 턱이 있으면(기본값은 한 칸 높이까지),
  * 순간이동 대신 상승 속도를 매 틱 탑승자에게 전송하여 얼음 위로 올라타게 한다.
  * 얼음 윗면보다 조금 더 솟았다가 중력으로 내려앉고, 오르는 동안 수평 속도는 유지된다.
  * 또한 마커로 지정한 범위에 들어선 보트의 속도를 바꾸고, 벽과 바닥, 슬라임 블록에서 보트를 튕겨 낸다.
@@ -44,9 +44,9 @@ public final class BoatJumpPlugin extends JavaPlugin implements Listener {
 	/** 앞쪽을 살필 때 한 번에 나아가는 거리(블록). */
 	private static final double SCAN_STEP = 0.25;
 
+	/** probe의 결과. 양수이면 오를 수 있는 턱의 높이(칸)이다. */
 	private static final int NOTHING = 0;
-	private static final int ICE = 1;
-	private static final int SOLID = 2;
+	private static final int SOLID = -1;
 	/** 보트가 받는 틱당 중력. 클라이언트가 이동 전에 빼는 값이므로 미리 더해서 보낸다. */
 	private static final double BOAT_GRAVITY = 0.04;
 	/** 공중에 뜬 보트가 받는 틱당 수평 감속 비율. 클라이언트가 이동 전에 곱하는 값이므로 미리 나눠서 보낸다. */
@@ -187,12 +187,15 @@ public final class BoatJumpPlugin extends JavaPlugin implements Listener {
 
 		// 넘을 수 없는 벽에 곧 부딪힐 것 같으면, 벽을 향하던 방향의 속도를 뒤집어서 튕겨 낸다.
 		// 물 위에서는 튕기지 않는다. 그러지 않으면 보트를 물가에 댈 수 없게 된다.
-		double wallBounce = settings.get("wallbounce", now);
+		// 이 자리에서 보트가 한 번에 오를 수 있는 높이(칸). 0이면 오르지 않는다.
+		int maxStep = (int) Math.round(settings.get("step", now));
+		// 벽에서 튕기는 세기는 탄성 값을 따른다.
+		double wallBounce = settings.wallBounce ? settings.get("elasticity", now) : 0;
 		if (wallBounce > 0 && !groundBlock.isLiquid() && now - state.lastWallTick >= WALL_COOLDOWN_TICKS) {
 			boolean hitX = Math.abs(motionX) >= WALL_MIN_SPEED && probe(world,
-				to.getX() + Math.signum(motionX) * (Math.abs(motionX) * WALL_LOOKAHEAD_TICKS + 0.1), to.getZ(), half, feetY) == SOLID;
+				to.getX() + Math.signum(motionX) * (Math.abs(motionX) * WALL_LOOKAHEAD_TICKS + 0.1), to.getZ(), half, feetY, maxStep) == SOLID;
 			boolean hitZ = Math.abs(motionZ) >= WALL_MIN_SPEED && probe(world,
-				to.getX(), to.getZ() + Math.signum(motionZ) * (Math.abs(motionZ) * WALL_LOOKAHEAD_TICKS + 0.1), half, feetY) == SOLID;
+				to.getX(), to.getZ() + Math.signum(motionZ) * (Math.abs(motionZ) * WALL_LOOKAHEAD_TICKS + 0.1), half, feetY, maxStep) == SOLID;
 			if (hitX || hitZ) {
 				state.lastWallTick = now;
 				sendMotion(rider, boat,
@@ -227,7 +230,7 @@ public final class BoatJumpPlugin extends JavaPlugin implements Listener {
 		// 벽에 붙어서 나란히 달릴 때 그 벽을 얼음 턱으로 오인하지 않도록, 밑면은 실제보다 조금 좁게 잡는다(half).
 
 		for (double d = SCAN_STEP; d <= reach; d += SCAN_STEP) {
-			int found = probe(world, to.getX() + dirX * d, to.getZ() + dirZ * d, half, feetY);
+			int found = probe(world, to.getX() + dirX * d, to.getZ() + dirZ * d, half, feetY, maxStep);
 			if (found == NOTHING) {
 				continue;
 			}
@@ -236,16 +239,16 @@ public final class BoatJumpPlugin extends JavaPlugin implements Listener {
 				return;
 			}
 
-			startClimb(boat, feetY + 1, to, motionX, motionZ);
+			startClimb(boat, feetY + found, maxStep, to, motionX, motionZ);
 			return;
 		}
 	}
 
 	/**
 	 * 중심이 (centerX, centerZ)인 보트 밑면 아래의 블록을 y 높이에서 살핀다.
-	 * 위가 비어 있는 뛰어넘을 블록이 하나라도 있으면 ICE, 그런 블록은 없고 막힌 블록이 있으면 SOLID, 모두 비어 있으면 NOTHING이다.
+	 * 오를 수 있는 턱이 하나라도 있으면 그중 가장 높은 턱의 높이(칸), 그런 턱은 없고 막힌 블록이 있으면 SOLID, 모두 비어 있으면 NOTHING이다.
 	 */
-	private int probe(World world, double centerX, double centerZ, double half, int y) {
+	private int probe(World world, double centerX, double centerZ, double half, int y, int maxStep) {
 		int result = NOTHING;
 		for (int x = (int) Math.floor(centerX - half); x <= (int) Math.floor(centerX + half); x++) {
 			for (int z = (int) Math.floor(centerZ - half); z <= (int) Math.floor(centerZ + half); z++) {
@@ -253,16 +256,35 @@ public final class BoatJumpPlugin extends JavaPlugin implements Listener {
 				if (block.isPassable()) {
 					continue;
 				}
-				if (store.jumpBlocks().contains(block.getType()) && block.getRelative(0, 1, 0).isPassable()) {
-					return ICE;
+				int height = stepHeight(block, maxStep);
+				if (height > 0) {
+					result = Math.max(result, height);
+				} else if (result == NOTHING) {
+					result = SOLID;
 				}
-				result = SOLID;
 			}
 		}
 		return result;
 	}
 
-	private void startClimb(Boat boat, int firstTargetY, Location start, double motionX, double motionZ) {
+	/**
+	 * 이 블록에서 위로 쌓인 턱의 높이(칸). 턱은 뛰어넘을 블록으로만 이루어져 있고 맨 위가 비어 있어야 한다.
+	 * 다른 블록이 섞여 있거나 maxStep보다 높으면 오를 수 없으므로 0이다.
+	 */
+	private int stepHeight(Block bottom, int maxStep) {
+		for (int height = 1; height <= maxStep; height++) {
+			Block block = bottom.getRelative(0, height - 1, 0);
+			if (!store.jumpBlocks().contains(block.getType())) {
+				return 0;
+			}
+			if (block.getRelative(0, 1, 0).isPassable()) {
+				return height;
+			}
+		}
+		return 0;
+	}
+
+	private void startClimb(Boat boat, int firstTargetY, int maxStep, Location start, double motionX, double motionZ) {
 		UUID id = boat.getUniqueId();
 		climbing.add(id);
 		double speed = Math.hypot(motionX, motionZ);
@@ -270,11 +292,12 @@ public final class BoatJumpPlugin extends JavaPlugin implements Listener {
 		// 이 거리 안에 다음 단이 있으면 이어서 오른다. 얼음을 처음 감지할 때 쓰는 거리와 같다.
 		double ahead = boat.getWidth() / 2 + 0.3 + speed * LOOKAHEAD_TICKS;
 		// 단을 감지한 뒤로 이 시간 안에 그 단 위에 올라서지 못하면 포기한다. 감지한 거리를 가는 데 걸리는 시간에 여유를 더한 값이다.
-		int patience = (int) (ahead / speed) + TIMEOUT_TICKS;
+		// 높은 턱은 솟아오르는 데에도 시간이 걸리므로, 그만큼을 더 기다린다.
+		int patience = (int) (ahead / speed) + TIMEOUT_TICKS + (int) (maxStep / MAX_RISE_SPEED);
 		// 오르기를 시작할 때 보트가 향하던 방향. 오르는 동안 보트를 돌린 만큼 진행 방향도 함께 돌리는 데 쓴다.
 		float startYaw = boat.getLocation().getYaw();
 		new BukkitRunnable() {
-			// 올라설 높이. 오르는 도중에 다음 단이 보이면 한 단씩 높아진다.
+			// 올라설 높이. 오르는 도중에 다음 단이 보이면 그 단의 높이만큼 높아진다.
 			private int targetY = firstTargetY;
 			// 서버가 아는 보트 위치는 지연 시간만큼 늦으므로, 오르는 동안의 높이는 보낸 속도를 직접 누적해서 추정한다.
 			private double predictedY = start.getY();
@@ -322,9 +345,9 @@ public final class BoatJumpPlugin extends JavaPlugin implements Listener {
 				// 그래서 매 틱 실제 위치와 지금의 진행 방향을 기준으로, 올라설 높이에 다음 단이 보이면 그때 한 단을 더 올린다.
 				for (double d = SCAN_STEP; d <= ahead; d += SCAN_STEP) {
 					int found = probe(actual.getWorld(),
-						actual.getX() + nowX / speed * d, actual.getZ() + nowZ / speed * d, half, targetY);
-					if (found == ICE) {
-						targetY++;
+						actual.getX() + nowX / speed * d, actual.getZ() + nowZ / speed * d, half, targetY, maxStep);
+					if (found > 0) {
+						targetY += found;
 						lastStepTick = ticks;
 					}
 					if (found != NOTHING) {
@@ -337,7 +360,7 @@ public final class BoatJumpPlugin extends JavaPlugin implements Listener {
 				boolean stepAhead = false;
 				for (double d = 0; d <= ahead && !stepAhead; d += SCAN_STEP) {
 					stepAhead = probe(actual.getWorld(),
-						actual.getX() + nowX / speed * d, actual.getZ() + nowZ / speed * d, half, targetY - 1) == ICE;
+						actual.getX() + nowX / speed * d, actual.getZ() + nowZ / speed * d, half, targetY - 1, 1) > 0;
 				}
 				lostTicks = stepAhead ? 0 : lostTicks + 1;
 				if (lostTicks > LOST_STEP_TICKS) {

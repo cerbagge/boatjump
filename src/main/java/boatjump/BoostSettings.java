@@ -24,9 +24,9 @@ final class BoostSettings {
 	static {
 		// 마커에 들어설 때 보트의 속도에 더하는 값(블록/초). 음수이면 느려진다. 0이면 속도를 바꾸지 않는다.
 		SPECS.put("speed", new Spec(0.0, -20.0, 20.0, -MAX_VALUE, MAX_VALUE));
-		// 넘을 수 없는 벽에 부딪혔을 때 뒤로 튕기는 정도. 부딪힌 속도에 곱한다. 0이면 튕기지 않는다.
-		SPECS.put("wallbounce", new Spec(0.5, 0.0, 1.0, 0.0, MAX_VALUE));
-		// 탄성 계수. 바닥에 떨어졌을 때 떨어진 속도에 곱해서 다시 튀어 오른다. 0이면 튀지 않는다.
+		// 보트가 한 번에 오를 수 있는 높이(칸). 0이면 오르지 않고, 1이면 한 칸, 2 이상이면 그 높이까지의 턱을 오른다. 소수는 반올림한다.
+		SPECS.put("step", new Spec(1.0, 1.0, 3.0, 0.0, MAX_VALUE));
+		// 탄성 계수. 바닥에 떨어졌을 때에는 떨어진 속도에, 벽에 부딪혔을 때에는 부딪힌 속도에 곱해서 되튄다. 0이면 튀지 않는다.
 		SPECS.put("elasticity", new Spec(0.0, 0.0, 1.0, 0.0, MAX_VALUE));
 		// 마커 안의 바닥을 슬라임처럼 만든다. 블록의 종류와 관계없이, 바닥에 닿으면 이 속도(블록/틱)로 위로 튕긴다. 0이면 튕기지 않는다.
 		SPECS.put("bounce", new Spec(0.0, 0.2, 1.0, 0.0, MAX_VALUE));
@@ -37,7 +37,7 @@ final class BoostSettings {
 	static final List<String> KEYS;
 
 	static {
-		List<String> keys = new java.util.ArrayList<>(List.of("enabled", "interval"));
+		List<String> keys = new java.util.ArrayList<>(List.of("enabled", "interval", "wallbounce"));
 		keys.addAll(SPECS.keySet());
 		KEYS = List.copyOf(keys);
 	}
@@ -49,6 +49,7 @@ final class BoostSettings {
 		KOREAN.put("enabled", "사용");
 		KOREAN.put("interval", "간격");
 		KOREAN.put("speed", "속도");
+		KOREAN.put("step", "계단");
 		KOREAN.put("wallbounce", "벽튕김");
 		KOREAN.put("elasticity", "탄성");
 		KOREAN.put("bounce", "슬라임");
@@ -61,8 +62,10 @@ final class BoostSettings {
 		"interval", "마커 안에서 속도 변화를 다시 적용하는 간격(틱)입니다. 0이면 들어설 때 한 번만 적용합니다. (초기값 0)",
 		"speed", "마커에 들어설 때 보트의 속도에 더하는 값(블록/초)입니다. 20이면 초당 20블록 빨라지고, -20이면 그만큼 느려집니다. "
 			+ "0이면 속도를 바꾸지 않습니다. (초기값 0, -100~100)",
-		"wallbounce", "넘을 수 없는 벽에 부딪혔을 때 뒤로 튕기는 정도입니다. 부딪힌 속도에 곱합니다. 0이면 튕기지 않습니다. (초기값 0.5)",
-		"elasticity", "탄성 계수입니다. 바닥에 떨어졌을 때 떨어진 속도에 곱해서 다시 튀어 오릅니다. 0이면 튀지 않습니다. (초기값 0)",
+		"step", "보트가 한 번에 오를 수 있는 높이(칸)입니다. 0이면 오르지 않고, 1이면 한 칸, 2 이상이면 그 높이까지의 턱을 오릅니다. (초기값 1)",
+		"wallbounce", "넘을 수 없는 벽에 부딪혔을 때 뒤로 튕길지 여부입니다. 켜기 또는 끄기. 튕기는 세기는 탄성 값을 따릅니다. (초기값 켜기)",
+		"elasticity", "탄성 계수입니다. 바닥에 떨어졌을 때에는 떨어진 속도에, 벽에 부딪혔을 때에는 부딪힌 속도에 곱해서 되튑니다. "
+			+ "0이면 튀지 않습니다. (초기값 0)",
 		"bounce", "마커 안의 바닥을 슬라임처럼 만듭니다. 블록의 종류와 관계없이, 바닥에 닿으면 이 속도(블록/틱)로 위로 튕깁니다. 0이면 튕기지 않습니다. (초기값 0)",
 		"slime", "실제 슬라임 블록을 밟았을 때 위로 튕기는 속도(블록/틱)입니다. 마커 밖에서도 동작합니다. 0이면 튕기지 않습니다. (초기값 0.5)");
 
@@ -70,6 +73,8 @@ final class BoostSettings {
 	boolean enabled = true;
 	/** 같은 구역 안에서 다시 가속하기까지의 간격(틱). 0이면 구역에 들어설 때 한 번만 가속한다. */
 	int interval = 0;
+	/** 넘을 수 없는 벽에 부딪혔을 때 뒤로 튕길지 여부. 튕기는 세기는 탄성 값을 따른다. */
+	boolean wallBounce = true;
 	private final Map<String, Value> values = new LinkedHashMap<>();
 
 	BoostSettings() {
@@ -80,6 +85,7 @@ final class BoostSettings {
 		BoostSettings copy = new BoostSettings();
 		copy.enabled = enabled;
 		copy.interval = interval;
+		copy.wallBounce = wallBounce;
 		copy.values.putAll(values);
 		return copy;
 	}
@@ -98,6 +104,12 @@ final class BoostSettings {
 						return "사용 값은 켜기 또는 끄기여야 합니다.";
 					}
 					enabled = Boolean.parseBoolean(tokens[0]);
+				}
+				case "wallbounce" -> {
+					if (tokens.length != 1 || !(tokens[0].equals("true") || tokens[0].equals("false"))) {
+						return "벽튕김 값은 켜기 또는 끄기여야 합니다.";
+					}
+					wallBounce = Boolean.parseBoolean(tokens[0]);
 				}
 				case "interval" -> {
 					Value parsed = Value.parse(tokens, 0, 0, 0, 1200);
@@ -135,7 +147,8 @@ final class BoostSettings {
 
 	/** 사람이 읽을 수 있도록 한국어로 적은 설정값. */
 	String describe() {
-		StringBuilder text = new StringBuilder("사용=" + (enabled ? "켜기" : "끄기") + ", 간격=" + interval);
+		StringBuilder text = new StringBuilder("사용=" + (enabled ? "켜기" : "끄기") + ", 간격=" + interval
+			+ ", 벽튕김=" + (wallBounce ? "켜기" : "끄기"));
 		values.forEach((key, value) -> text.append(", ").append(KOREAN.get(key)).append('=').append(value.display()));
 		return text.toString();
 	}
@@ -143,6 +156,7 @@ final class BoostSettings {
 	void save(ConfigurationSection section) {
 		section.set("enabled", enabled);
 		section.set("interval", interval);
+		section.set("wallbounce", wallBounce);
 		values.forEach((key, value) -> section.set(key, value.toString()));
 	}
 
@@ -153,6 +167,9 @@ final class BoostSettings {
 		}
 		settings.enabled = section.getBoolean("enabled", settings.enabled);
 		settings.interval = section.getInt("interval", settings.interval);
+		// 예전 파일에는 벽튕김이 숫자로 저장되어 있다. 0이면 끄기, 그 밖의 숫자이면 켜기로 읽는다.
+		String wall = section.getString("wallbounce", "true");
+		settings.wallBounce = !(wall.equals("false") || wall.equals("0") || wall.equals("0.0"));
 		for (String key : SPECS.keySet()) {
 			String text = section.getString(key);
 			if (text != null) {
