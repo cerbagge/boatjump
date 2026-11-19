@@ -279,6 +279,8 @@ public final class BoatJumpPlugin extends JavaPlugin implements Listener {
 		double speed = Math.hypot(motionX, motionZ);
 		// 이 거리 안에 들어온 단까지만 미리 올라간다. 얼음을 처음 감지할 때 쓰는 거리와 같다.
 		double ahead = boat.getWidth() / 2 + 0.3 + speed * LOOKAHEAD_TICKS;
+		// 오르기를 시작할 때 보트가 향하던 방향. 오르는 동안 보트를 돌린 만큼 진행 방향도 함께 돌리는 데 쓴다.
+		float startYaw = boat.getLocation().getYaw();
 		// 임시 진단용 기록: 동작이 안정되면 제거한다.
 		getLogger().info("climb start: type=" + boat.getType() + " speed=" + speed
 			+ " start=" + start.getX() + "," + start.getY() + "," + start.getZ() + " targetY=" + targetY + " iceDistance=" + iceDistance + " steps=" + steps);
@@ -304,8 +306,11 @@ public final class BoatJumpPlugin extends JavaPlugin implements Listener {
 				// 공중에 뜬 뒤에는 감속으로 속도를 잃지 않도록 수평 속도를 보정한다.
 				// 첫 틱에는 보트가 아직 바닥에 붙어 있어서 공중 감속을 받지 않으므로, 보정하면 오히려 빨라진다.
 				double drag = ticks == 1 ? 1 : AIR_DRAG;
-				double sendX = motionX / drag;
-				double sendZ = motionZ / drag;
+				// 처음의 진행 방향을 그대로 유지하면, 오르는 동안 보트를 돌려도 원래 방향으로 밀려서 옆으로 미끄러진다.
+				// 그래서 오르기를 시작한 뒤로 보트를 돌린 각도만큼 진행 방향을 함께 돌린다.
+				double turned = Math.toRadians(boat.getLocation().getYaw() - startYaw);
+				double sendX = (motionX * Math.cos(turned) - motionZ * Math.sin(turned)) / drag;
+				double sendZ = (motionX * Math.sin(turned) + motionZ * Math.cos(turned)) / drag;
 
 				// 착지 단계에서는 아래로 누르지 않고, 중력으로 떨어질 때와 똑같은 속도를 보내서 자연스럽게 내려앉게 한다.
 				// 떠 있는 높이(0.1블록)는 두 틱이면 다 내려오므로, 두 틱 동안 수평 속도만 유지해 주고 끝낸다.
