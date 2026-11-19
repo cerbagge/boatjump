@@ -39,6 +39,8 @@ public final class BoatJumpPlugin extends JavaPlugin implements Listener {
 	private static final int LOOKAHEAD_TICKS = 7;
 	/** 감지한 단 위에 올라서지 못했을 때, 그 단까지 가는 데 걸리는 시간에 더해서 기다리는 여유 틱 수. */
 	private static final int TIMEOUT_TICKS = 20;
+	/** 오르는 도중에 올라설 단이 진행 방향에서 사라졌을 때, 포기하기 전에 기다리는 틱 수. */
+	private static final int LOST_STEP_TICKS = 3;
 	/** 앞쪽을 살필 때 한 번에 나아가는 거리(블록). */
 	private static final double SCAN_STEP = 0.25;
 
@@ -274,6 +276,8 @@ public final class BoatJumpPlugin extends JavaPlugin implements Listener {
 			private int lastStepTick;
 			// 착지 단계에 들어선 뒤로 지난 틱 수. 0이면 아직 착지 단계가 아니다.
 			private int landingTicks;
+			// 올라설 단이 진행 방향에 보이지 않은 채로 지난 틱 수.
+			private int lostTicks;
 
 			@Override
 			public void run() {
@@ -320,6 +324,19 @@ public final class BoatJumpPlugin extends JavaPlugin implements Listener {
 					if (found != NOTHING) {
 						break;
 					}
+				}
+
+				// 방향을 틀어서 올라설 단이 더 이상 진행 방향에 없으면, 떠서 기다릴 이유가 없으므로 곧바로 내려온다.
+				// 서버가 아는 위치와 방향이 실제보다 조금 늦으므로, 몇 틱 연속으로 보이지 않을 때에만 포기한다.
+				boolean stepAhead = false;
+				for (double d = 0; d <= ahead && !stepAhead; d += SCAN_STEP) {
+					stepAhead = probe(actual.getWorld(),
+						actual.getX() + nowX / speed * d, actual.getZ() + nowZ / speed * d, half, targetY - 1) == ICE;
+				}
+				lostTicks = stepAhead ? 0 : lostTicks + 1;
+				if (lostTicks > LOST_STEP_TICKS) {
+					finish("lost");
+					return;
 				}
 
 				if (ticks - lastStepTick > patience) {
