@@ -13,6 +13,8 @@ final class Marker {
 	/** 속한 그룹의 이름. 그룹이 없으면 null이다. 같은 그룹의 마커는 설정값을 함께 고친다. */
 	String group;
 	BoostSettings settings;
+	/** set 명령어로 설정값을 고친 적이 있는지 여부. 범위를 표시할 때의 색을 정한다. */
+	boolean customized;
 
 	Marker(String name, String world, int x1, int y1, int z1, int x2, int y2, int z2, String group, BoostSettings settings) {
 		this.name = name;
@@ -30,10 +32,5 @@ final class Marker {
 	boolean contains(String world, int x, int y, int z) {
 		return this.world.equals(world)
 			&& x >= minX && x <= maxX && y >= minY && y <= maxY && z >= minZ && z <= maxZ;
-	}
-
-	/** 색을 정하거나 표시할 때 쓰는 이름. 그룹이 있으면 그룹 이름이고, 없으면 마커 이름이다. */
-	String colorKey() {
-		return group != null ? group : name;
 	}
 }

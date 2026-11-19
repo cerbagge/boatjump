@@ -55,7 +55,7 @@ final class BoatJumpCommand implements TabExecutor {
 		info(sender, "/boatjump set <이름|default> <항목> <값> - 설정값을 고칩니다. 같은 그룹의 마커도 함께 바뀝니다.");
 		info(sender, "  항목: " + String.join(", ", BoostSettings.KEYS));
 		info(sender, "  값: 숫자, 또는 random [최소 최대] [틱] (틱을 생략하면 " + Value.DEFAULT_PERIOD + "틱)");
-		info(sender, "/boatjump group <이름> <그룹|none> - 마커의 그룹을 지정하거나 해제합니다.");
+		info(sender, "/boatjump group <이름> <그룹|none> - 마커의 그룹을 지정하거나 해제합니다. 없는 이름이면 선택한 범위로 새로 만듭니다.");
 		info(sender, "/boatjump jumpblock <add|remove|list> [블록...] - 보트가 뛰어넘을 블록을 관리합니다.");
 	}
 
@@ -86,22 +86,29 @@ final class BoatJumpCommand implements TabExecutor {
 			error(sender, "이미 있는 마커 이름입니다: " + name);
 			return;
 		}
+		createFromSelection(player, name, group);
+	}
+
+	/** 플레이어가 막대기로 선택한 범위로 마커를 만든다. 범위를 아직 다 지정하지 않았으면 안내만 한다. */
+	private void createFromSelection(Player player, String name, String group) {
 		MarkerWand.Selection selection = wand.selection(player);
 		if (!selection.complete()) {
-			error(sender, "먼저 마커 막대기로 두 지점을 지정해야 합니다. (/boatjump markers)");
+			error(player, "먼저 마커 막대기로 두 지점을 지정해야 합니다. (/boatjump markers)");
 			return;
 		}
 
 		// 그룹에 이미 마커가 있으면 그 그룹의 설정값을 따르고, 없으면 기본 설정값에서 시작한다.
-		BoostSettings settings = store.defaults().copy();
-		if (group != null && !store.members(group).isEmpty()) {
-			settings = store.members(group).getFirst().settings.copy();
-		}
-		store.add(new Marker(name, selection.first.getWorld().getName(),
+		Marker marker = new Marker(name, selection.first.getWorld().getName(),
 			selection.first.getX(), selection.first.getY(), selection.first.getZ(),
-			selection.second.getX(), selection.second.getY(), selection.second.getZ(), group, settings));
+			selection.second.getX(), selection.second.getY(), selection.second.getZ(), group, store.defaults().copy());
+		if (group != null && !store.members(group).isEmpty()) {
+			Marker member = store.members(group).getFirst();
+			marker.settings = member.settings.copy();
+			marker.customized = member.customized;
+		}
+		store.add(marker);
 		store.save();
-		info(sender, "마커 " + name + "을(를) 만들었습니다." + (group != null ? " 그룹: " + group : ""));
+		info(player, "마커 " + name + "을(를) 만들었습니다." + (group != null ? " 그룹: " + group : ""));
 	}
 
 	private void remove(CommandSender sender, String[] args) {
@@ -180,6 +187,7 @@ final class BoatJumpCommand implements TabExecutor {
 				error(sender, problem);
 				return;
 			}
+			target.customized = true;
 		}
 		store.save();
 		info(sender, (marker.group != null ? "그룹 " + marker.group + "의 마커 " + targets.size() + "개를" : "마커 " + marker.name + "을(를)")
@@ -193,7 +201,13 @@ final class BoatJumpCommand implements TabExecutor {
 		}
 		Marker marker = store.get(args[1]);
 		if (marker == null) {
-			error(sender, "없는 마커입니다: " + args[1]);
+			// 아직 없는 마커이면, 막대기로 선택한 범위로 새로 만든다.
+			boolean none = args[2].equalsIgnoreCase("none");
+			if (!(sender instanceof Player player)) {
+				error(sender, "없는 마커입니다: " + args[1]);
+			} else if (validName(sender, args[1]) && (none || validName(sender, args[2]))) {
+				createFromSelection(player, args[1], none ? null : args[2]);
+			}
 			return;
 		}
 		if (args[2].equalsIgnoreCase("none")) {
@@ -210,6 +224,7 @@ final class BoatJumpCommand implements TabExecutor {
 		members.remove(marker);
 		if (!members.isEmpty()) {
 			marker.settings = members.getFirst().settings.copy();
+			marker.customized = members.getFirst().customized;
 		}
 		marker.group = args[2];
 		store.save();

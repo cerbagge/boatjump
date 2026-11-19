@@ -63,9 +63,11 @@ final class MarkerStore {
 				logger.warning("markers.yml의 마커 '" + name + "'은 형식이 올바르지 않아서 건너뜁니다.");
 				continue;
 			}
-			markers.put(name, new Marker(name, entry.getString("world"),
+			Marker marker = new Marker(name, entry.getString("world"),
 				min.get(0), min.get(1), min.get(2), max.get(0), max.get(1), max.get(2),
-				entry.getString("group"), BoostSettings.load(entry)));
+				entry.getString("group"), BoostSettings.load(entry));
+			marker.customized = entry.getBoolean("customized");
+			markers.put(name, marker);
 		}
 	}
 
@@ -80,6 +82,7 @@ final class MarkerStore {
 			entry.set("min", List.of(marker.minX, marker.minY, marker.minZ));
 			entry.set("max", List.of(marker.maxX, marker.maxY, marker.maxZ));
 			entry.set("group", marker.group);
+			entry.set("customized", marker.customized);
 			marker.settings.save(entry);
 		}
 		try {

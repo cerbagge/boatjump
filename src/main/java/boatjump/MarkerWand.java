@@ -35,7 +35,8 @@ import org.joml.Vector3f;
 
 /**
  * 마커 막대기. 블록을 좌클릭하면 첫째 지점, 우클릭하면 둘째 지점을 지정한다.
- * 막대기를 들고 있는 동안에는 선택한 범위와 주변 마커의 범위를 선으로 보여 준다.
+ * 막대기를 들고 있는 동안에는 선택한 범위(흰색)와 주변 마커의 범위를 선으로 보여 준다.
+ * 마커는 초록색이고, 설정값을 고친 마커는 파란색이다.
  * 선은 가늘게 늘인 블록 표시 엔티티이며, 막대기를 든 플레이어에게만 보인다.
  */
 final class MarkerWand implements Listener {
@@ -45,6 +46,10 @@ final class MarkerWand implements Listener {
 	private static final double DRAW_DISTANCE = 96;
 	/** 선의 굵기(블록). */
 	private static final float LINE_WIDTH = 0.04f;
+	/** 설정값을 고치지 않은 마커의 색. */
+	private static final Color PLAIN_COLOR = Color.LIME;
+	/** set 명령어로 설정값을 고친 마커의 색. */
+	private static final Color CUSTOMIZED_COLOR = Color.fromRGB(0x3399FF);
 
 	/** 플레이어가 막대기로 고른 두 지점. 아직 고르지 않은 지점은 null이다. */
 	static final class Selection {
@@ -114,6 +119,10 @@ final class MarkerWand implements Listener {
 		event.getPlayer().sendMessage(Component.text(
 			(first ? "첫째" : "둘째") + " 지점: " + block.getX() + ", " + block.getY() + ", " + block.getZ(),
 			NamedTextColor.AQUA));
+		if (selection.complete()) {
+			event.getPlayer().sendMessage(Component.text(
+				"범위를 지정했습니다. /boatjump create <이름> [그룹] 으로 마커를 만드십시오.", NamedTextColor.GRAY));
+		}
 		refresh(event.getPlayer());
 	}
 
@@ -167,7 +176,7 @@ final class MarkerWand implements Listener {
 				continue;
 			}
 			wanted.put(new Box(world, marker.minX, marker.minY, marker.minZ, marker.maxX, marker.maxY, marker.maxZ,
-				colorOf(marker.colorKey())), true);
+				marker.customized ? CUSTOMIZED_COLOR : PLAIN_COLOR), true);
 
 			// 발밑의 블록이 마커 안에 있으면, 어느 마커 위에 서 있는지 알려 준다.
 			if (standing == null && (marker.contains(world.getName(), at.getBlockX(), at.getBlockY(), at.getBlockZ())
@@ -208,12 +217,6 @@ final class MarkerWand implements Listener {
 		}
 	}
 
-	/** 그룹(또는 마커) 이름에 따라 항상 같은 색을 돌려준다. 같은 그룹의 마커는 같은 색으로 보인다. */
-	private static Color colorOf(String key) {
-		float hue = (key.hashCode() & 0xFFFF) / (float) 0x10000;
-		return Color.fromRGB(java.awt.Color.HSBtoRGB(hue, 0.9f, 1.0f) & 0xFFFFFF);
-	}
-
 	/** 상자의 모서리 12개를 선으로 만든다. */
 	private List<BlockDisplay> spawnBox(Player viewer, Box box) {
 		float sizeX = box.maxX - box.minX + 1;
@@ -244,7 +247,7 @@ final class MarkerWand implements Listener {
 			display.setVisibleByDefault(false);
 			display.setPersistent(false);
 			display.setBlock(Material.WHITE_CONCRETE.createBlockData());
-			// 블록 뒤에 가려져도 보이도록 발광 윤곽선을 켜고, 윤곽선의 색으로 그룹을 구분한다.
+			// 블록 뒤에 가려져도 보이도록 발광 윤곽선을 켜고, 윤곽선의 색으로 마커의 상태를 구분한다.
 			display.setGlowing(true);
 			display.setGlowColorOverride(box.color);
 			display.setBrightness(new Display.Brightness(15, 15));
