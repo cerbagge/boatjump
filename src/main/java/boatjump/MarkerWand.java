@@ -37,7 +37,7 @@ import org.joml.Vector3f;
 /**
  * 마커 막대기. 블록을 좌클릭하면 첫째 지점, 우클릭하면 둘째 지점을 지정한다.
  * 막대기를 들고 있는 동안에는 선택한 범위(흰색)와 주변 마커의 범위를 선으로 보여 준다.
- * 마커는 초록색이고, 설정값을 고친 마커는 파란색이다.
+ * 마커는 초록색이고, 설정값을 고친 마커는 파란색이다. 그룹에 속한 마커는 그룹마다 다른 색이다.
  * 선은 가늘게 늘인 블록 표시 엔티티이며, 막대기를 든 플레이어에게만 보인다.
  */
 final class MarkerWand implements Listener {
@@ -51,6 +51,10 @@ final class MarkerWand implements Listener {
 	private static final Color PLAIN_COLOR = Color.LIME;
 	/** 설정 명령어로 설정값을 고친 마커(또는 그런 그룹에 속한 마커)의 색. */
 	private static final Color CUSTOMIZED_COLOR = Color.fromRGB(0x3399FF);
+	/** 그룹에 속한 마커의 색. 그룹을 만든 순서대로 하나씩 쓰고, 그룹이 더 많으면 처음부터 다시 쓴다. */
+	private static final List<Color> GROUP_COLORS = List.of(
+		Color.fromRGB(0xFF8800), Color.fromRGB(0xFF33CC), Color.fromRGB(0xFFEE00), Color.fromRGB(0xFF3333),
+		Color.fromRGB(0x9955FF), Color.fromRGB(0x00DDDD), Color.fromRGB(0xFF99AA), Color.fromRGB(0x996633));
 
 	/** 플레이어가 막대기로 고른 두 지점. 아직 고르지 않은 지점은 null이다. */
 	static final class Selection {
@@ -176,7 +180,7 @@ final class MarkerWand implements Listener {
 				continue;
 			}
 			wanted.put(new Box(world, marker.minX, marker.minY, marker.minZ, marker.maxX, marker.maxY, marker.maxZ,
-				store.customizedOf(marker) ? CUSTOMIZED_COLOR : PLAIN_COLOR), true);
+				colorOf(marker)), true);
 		}
 
 		Selection selection = selections.get(player.getUniqueId());
@@ -210,6 +214,20 @@ final class MarkerWand implements Listener {
 				.append(Component.text(target.group != null ? "  (그룹: " + target.group + ")" : "", NamedTextColor.AQUA)
 					.decoration(TextDecoration.BOLD, false)));
 		}
+	}
+
+	/** 마커를 표시할 색. 그룹에 속한 마커는 그룹의 색이고, 아니면 설정값을 고쳤는지에 따라 파란색이나 초록색이다. */
+	private Color colorOf(Marker marker) {
+		if (marker.group != null) {
+			int index = 0;
+			for (Group group : store.groups()) {
+				if (group.name.equals(marker.group)) {
+					return GROUP_COLORS.get(index % GROUP_COLORS.size());
+				}
+				index++;
+			}
+		}
+		return store.customizedOf(marker) ? CUSTOMIZED_COLOR : PLAIN_COLOR;
 	}
 
 	/** 상자의 모서리 12개를 선으로 만든다. */

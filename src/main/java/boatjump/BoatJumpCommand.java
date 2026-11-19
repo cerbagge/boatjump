@@ -699,9 +699,6 @@ final class BoatJumpCommand implements TabExecutor, Listener {
 		if (key.equals("enabled")) {
 			options.put("켜기", "마커의 속도 변화를 켭니다.");
 			options.put("끄기", "마커의 속도 변화를 끕니다. 튕김 관련 항목은 그대로 동작합니다.");
-		} else if (key.equals("wallbounce")) {
-			options.put("켜기", "넘을 수 없는 벽에 부딪히면 뒤로 튕깁니다. 튕기는 세기는 탄성 값을 따릅니다.");
-			options.put("끄기", "벽에 부딪혀도 튕기지 않습니다.");
 		} else if (!key.equals("interval")) {
 			options.put("무작위", "정해진 틱마다 값이 무작위로 바뀝니다. 형식: 무작위 [최소 최대] [틱] "
 				+ "(범위를 생략하면 항목별 기본 범위, 틱을 생략하면 " + Value.DEFAULT_PERIOD + "틱)");
