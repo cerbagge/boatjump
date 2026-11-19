@@ -1,0 +1,391 @@
+package boatjump;
+
+import java.util.Arrays;
+import java.util.HashSet;
+import java.util.Map;
+import java.util.Set;
+import java.util.UUID;
+import java.util.WeakHashMap;
+import net.minecraft.network.protocol.game.ClientboundSetEntityMotionPacket;
+import net.minecraft.world.phys.Vec3;
+import org.bukkit.Bukkit;
+import org.bukkit.Location;
+import org.bukkit.Material;
+import org.bukkit.World;
+import org.bukkit.block.Block;
+import org.bukkit.craftbukkit.entity.CraftPlayer;
+import org.bukkit.entity.Boat;
+import org.bukkit.entity.Player;
+import org.bukkit.event.EventHandler;
+import org.bukkit.event.Listener;
+import org.bukkit.event.vehicle.VehicleMoveEvent;
+import org.bukkit.plugin.java.JavaPlugin;
+import org.bukkit.scheduler.BukkitRunnable;
+
+/**
+ * 플레이어가 조종하는 보트의 진행 방향에 한 칸 높이의 뛰어넘을 블록(기본값은 얼음 계열)이 있으면,
+ * 순간이동 대신 상승 속도를 매 틱 탑승자에게 전송하여 얼음 위로 올라타게 한다.
+ * 얼음 윗면보다 조금 더 솟았다가 중력으로 내려앉고, 오르는 동안 수평 속도는 유지된다.
+ * 또한 마커로 지정한 범위에 들어선 보트의 속도를 바꾸고, 벽과 바닥, 슬라임 블록에서 보트를 튕겨 낸다.
+ */
+public final class BoatJumpPlugin extends JavaPlugin implements Listener {
+	/** 이 속도(블록/틱)보다 느리면 오르지 않는다. */
+	private static final double MIN_SPEED = 0.03;
+	/** 틱당 최대 상승 높이. 값이 클수록 순간이동에 가까워진다. */
+	private static final double MAX_RISE_SPEED = 0.5;
+	/** 얼음 윗면보다 더 솟아오르는 높이. 착지할 때의 통통 튀는 느낌을 결정한다. */
+	private static final double OVERSHOOT = 0.1;
+	/** 얼마나 앞을 미리 살필지 정하는 틱 수. 오르는 시간(3틱)에 지연 시간 여유(4틱)를 더한 값이다. */
+	private static final int LOOKAHEAD_TICKS = 7;
+	/** 얼음 위에 도달하지 못했을 때 오르기를 포기하는 틱 수. */
+	private static final int TIMEOUT_TICKS = 20;
+	/** 계단으로 이어진 얼음으로 인정하는 다음 단까지의 최대 거리(블록). 이보다 멀면 착지한 뒤에 새로 오른다. */
+	private static final double STAIR_GAP = 3;
+	/** 앞쪽을 살필 때 한 번에 나아가는 거리(블록). */
+	private static final double SCAN_STEP = 0.25;
+
+	private static final int NOTHING = 0;
+	private static final int ICE = 1;
+	private static final int SOLID = 2;
+	/** 보트가 받는 틱당 중력. 클라이언트가 이동 전에 빼는 값이므로 미리 더해서 보낸다. */
+	private static final double BOAT_GRAVITY = 0.04;
+	/** 공중에 뜬 보트가 받는 틱당 수평 감속 비율. 클라이언트가 이동 전에 곱하는 값이므로 미리 나눠서 보낸다. */
+	private static final double AIR_DRAG = 0.9;
+
+	/** 속도를 정할 때 참고하는 최근 이동 기록의 개수. */
+	private static final int SPEED_SAMPLES = 5;
+	/** 벽에 부딪히기 몇 틱 전에 튕길지 정하는 값. 속도 패킷이 클라이언트에 닿기까지의 지연 시간을 고려한 값이다. */
+	private static final int WALL_LOOKAHEAD_TICKS = 2;
+	/** 벽 쪽으로 향하는 속도가 이 값(블록/틱)보다 느리면 튕기지 않는다. 벽을 스치며 달릴 때 튕기지 않게 한다. */
+	private static final double WALL_MIN_SPEED = 0.1;
+	/** 벽에 튕긴 뒤 다시 튕길 수 있을 때까지의 간격(틱). */
+	private static final int WALL_COOLDOWN_TICKS = 10;
+	/** 슬라임 블록에서 튕긴 뒤 다시 튕길 수 있을 때까지의 간격(틱). */
+	private static final int SLIME_COOLDOWN_TICKS = 6;
+	/** 이 속도(블록/틱)보다 느리게 떨어졌으면 탄성으로 튀어 오르지 않는다. 얼음에 올라선 뒤의 작은 낙하에 반응하지 않게 한다. */
+	private static final double MIN_FALL_SPEED = 0.15;
+
+	/** 보트 한 대의 상태. 보트가 사라지면 함께 정리된다. */
+	private static final class BoatState {
+		/** 최근 이동 속도. 아직 기록이 없으면 null이다. */
+		double[] speeds;
+		/** 직전 이동의 높이 변화량. 음수이면 떨어지는 중이었다는 뜻이다. */
+		double previousDy;
+		/** 직전에 있던 마커의 이름. 마커 밖이었으면 null이다. */
+		String lastZone;
+		int lastBoostTick = -10000;
+		int lastWallTick = -10000;
+		int lastSlimeTick = -10000;
+	}
+
+	private final Set<UUID> climbing = new HashSet<>();
+	private final Map<Boat, BoatState> states = new WeakHashMap<>();
+	private MarkerStore store;
+
+	@Override
+	public void onEnable() {
+		getDataFolder().mkdirs();
+		store = new MarkerStore(new java.io.File(getDataFolder(), "markers.yml"), getLogger());
+		store.load();
+
+		MarkerWand wand = new MarkerWand(this, store);
+		getServer().getPluginManager().registerEvents(this, this);
+		getServer().getPluginManager().registerEvents(wand, this);
+
+		BoatJumpCommand command = new BoatJumpCommand(store, wand);
+		getCommand("boatjump").setExecutor(command);
+		getCommand("boatjump").setTabCompleter(command);
+	}
+
+	@EventHandler(ignoreCancelled = true)
+	public void onVehicleMove(VehicleMoveEvent event) {
+		if (!(event.getVehicle() instanceof Boat boat) || climbing.contains(boat.getUniqueId())) {
+			return;
+		}
+		if (boat.getPassengers().isEmpty() || !(boat.getPassengers().getFirst() instanceof Player rider)) {
+			return;
+		}
+
+		BoatState state = states.computeIfAbsent(boat, key -> new BoatState());
+		int now = Bukkit.getCurrentTick();
+		Location from = event.getFrom();
+		Location to = event.getTo();
+		World world = to.getWorld();
+		double motionX = to.getX() - from.getX();
+		double motionZ = to.getZ() - from.getZ();
+		double dy = to.getY() - from.getY();
+		double previousDy = state.previousDy;
+		state.previousDy = dy;
+
+		// 보트 바로 아래의 블록이 마커 안에 있으면 그 마커의 설정값을 쓰고, 없으면 기본값을 쓴다.
+		// 마커를 바닥이 아니라 공간으로 지정한 경우도 인정하도록, 보트가 있는 칸도 함께 확인한다.
+		Block groundBlock = to.clone().subtract(0, 0.2, 0).getBlock();
+		Material ground = groundBlock.getType();
+		Marker marker = store.find(world.getName(), groundBlock.getX(), groundBlock.getY(), groundBlock.getZ());
+		if (marker == null) {
+			marker = store.find(world.getName(), to.getBlockX(), to.getBlockY(), to.getBlockZ());
+		}
+		BoostSettings settings = marker != null ? marker.settings : store.defaults();
+
+		// 단단한 블록의 윗면에 닿아 있을 때에만 위로 튕긴다. 물에 떠 있을 때에는 튕기지 않는다.
+		boolean resting = !groundBlock.isPassable() && to.getY() - (groundBlock.getY() + 1) < 0.05;
+		if (resting && ground == Material.SLIME_BLOCK) {
+			// 슬라임 블록을 밟으면 떨어진 속도와 관계없이 정해진 세기로 튕기므로, 다시 밟을 때마다 계속 튕긴다.
+			double strength = settings.get("slime", now);
+			if (strength > 0 && now - state.lastSlimeTick >= SLIME_COOLDOWN_TICKS) {
+				state.lastSlimeTick = now;
+				sendMotion(rider, boat, motionX, strength, motionZ);
+				return;
+			}
+		} else if (resting && previousDy < -MIN_FALL_SPEED && dy > previousDy + 0.1) {
+			// 떨어지다가 바닥에 닿았으면, 떨어지던 속도에 탄성 계수를 곱한 만큼 다시 튀어 오른다.
+			double rebound = -previousDy * settings.get("elasticity", now);
+			if (rebound >= 0.1) {
+				sendMotion(rider, boat, motionX, rebound, motionZ);
+				return;
+			}
+		}
+
+		double measured = Math.hypot(motionX, motionZ);
+		if (measured < MIN_SPEED) {
+			return;
+		}
+
+		// 이동 패킷이 두 틱 분량으로 한꺼번에 처리되면 한 번의 이동량이 실제 속도의 두 배 가까이로 측정된다.
+		// 그 값을 그대로 쓰면 오르는 동안 보트가 갑자기 빨라지므로, 최근 이동량의 중앙값을 속도로 삼는다.
+		double speed = medianSpeed(state, measured);
+		motionX *= speed / measured;
+		motionZ *= speed / measured;
+
+		// 공중에 떠 있는 동안에는 오르지도 가속하지도 않는다. 땅 위에 있거나 물에 떠 있을 때만 발동한다.
+		if (ground.isAir()) {
+			return;
+		}
+
+		double half = boat.getWidth() / 2 - 0.05;
+		int feetY = (int) Math.floor(to.getY() + 0.1);
+
+		// 넘을 수 없는 벽에 곧 부딪힐 것 같으면, 벽을 향하던 방향의 속도를 뒤집어서 튕겨 낸다.
+		// 물 위에서는 튕기지 않는다. 그러지 않으면 보트를 물가에 댈 수 없게 된다.
+		double wallBounce = settings.get("wallbounce", now);
+		if (wallBounce > 0 && !groundBlock.isLiquid() && now - state.lastWallTick >= WALL_COOLDOWN_TICKS) {
+			boolean hitX = Math.abs(motionX) >= WALL_MIN_SPEED && probe(world,
+				to.getX() + Math.signum(motionX) * (Math.abs(motionX) * WALL_LOOKAHEAD_TICKS + 0.1), to.getZ(), half, feetY) == SOLID;
+			boolean hitZ = Math.abs(motionZ) >= WALL_MIN_SPEED && probe(world,
+				to.getX(), to.getZ() + Math.signum(motionZ) * (Math.abs(motionZ) * WALL_LOOKAHEAD_TICKS + 0.1), half, feetY) == SOLID;
+			if (hitX || hitZ) {
+				state.lastWallTick = now;
+				sendMotion(rider, boat,
+					hitX ? -motionX * wallBounce : motionX, 0, hitZ ? -motionZ * wallBounce : motionZ);
+				return;
+			}
+		}
+
+		// 마커 안에 들어서면 속도를 배율만큼 바꾼다. 매 틱 덮어쓰면 조종이 서버의 늦은 측정값에 끌려가서 어색해지므로,
+		// 들어설 때 한 번만 바꾸거나 정해진 간격으로만 바꾼다.
+		String zone = marker != null ? marker.name : null;
+		if (marker != null && settings.enabled) {
+			boolean entered = !zone.equals(state.lastZone);
+			boolean repeat = settings.interval > 0 && now - state.lastBoostTick >= settings.interval;
+			if (entered || repeat) {
+				state.lastBoostTick = now;
+				double target = Math.min(
+					speed * settings.get("multiplier", now) + settings.get("bonus", now), settings.get("max", now));
+				if (Math.abs(target - speed) > 0.01) {
+					sendMotion(rider, boat, motionX / speed * target, 0, motionZ / speed * target);
+				}
+			}
+		}
+		state.lastZone = zone;
+
+		double dirX = motionX / speed;
+		double dirZ = motionZ / speed;
+		double reach = boat.getWidth() / 2 + 0.3 + speed * LOOKAHEAD_TICKS;
+
+		// 보트의 충돌 영역은 방향과 관계없이 회전하지 않는 정사각형이다.
+		// 중심선이나 몇 개의 선만 살피면 각도에 따라 모서리가 먼저 걸리므로,
+		// 정사각형 밑면을 진행 방향으로 조금씩 옮겨 가며 그 아래에 놓이는 블록을 모두 살핀다.
+		// 벽에 붙어서 나란히 달릴 때 그 벽을 얼음 턱으로 오인하지 않도록, 밑면은 실제보다 조금 좁게 잡는다(half).
+
+		for (double d = SCAN_STEP; d <= reach; d += SCAN_STEP) {
+			int found = probe(world, to.getX() + dirX * d, to.getZ() + dirZ * d, half, feetY);
+			if (found == NOTHING) {
+				continue;
+			}
+			// 얼음보다 앞에 다른 블록이 가로막고 있으면 오르지 않는다.
+			if (found == SOLID) {
+				return;
+			}
+
+			// 얼음이 계단처럼 이어져 있으면, 한 단씩 따로 오르지 않고 맨 윗단까지 한 번에 오른다.
+			// 단마다 착지했다가 다시 오르면, 다음 단의 옆면에 먼저 부딪혀서 멈추기 때문이다.
+			int targetY = feetY + 1;
+			double iceDistance = d;
+			int steps = 1;
+			for (double e = d + SCAN_STEP; e <= iceDistance + STAIR_GAP; e += SCAN_STEP) {
+				int next = probe(world, to.getX() + dirX * e, to.getZ() + dirZ * e, half, targetY);
+				if (next == SOLID) {
+					break;
+				}
+				if (next == ICE) {
+					targetY++;
+					iceDistance = e;
+					steps++;
+				}
+			}
+
+			startClimb(boat, targetY, to, iceDistance, steps, motionX, motionZ);
+			return;
+		}
+	}
+
+	/**
+	 * 중심이 (centerX, centerZ)인 보트 밑면 아래의 블록을 y 높이에서 살핀다.
+	 * 위가 비어 있는 뛰어넘을 블록이 하나라도 있으면 ICE, 그런 블록은 없고 막힌 블록이 있으면 SOLID, 모두 비어 있으면 NOTHING이다.
+	 */
+	private int probe(World world, double centerX, double centerZ, double half, int y) {
+		int result = NOTHING;
+		for (int x = (int) Math.floor(centerX - half); x <= (int) Math.floor(centerX + half); x++) {
+			for (int z = (int) Math.floor(centerZ - half); z <= (int) Math.floor(centerZ + half); z++) {
+				Block block = world.getBlockAt(x, y, z);
+				if (block.isPassable()) {
+					continue;
+				}
+				if (store.jumpBlocks().contains(block.getType()) && block.getRelative(0, 1, 0).isPassable()) {
+					return ICE;
+				}
+				result = SOLID;
+			}
+		}
+		return result;
+	}
+
+	private void startClimb(Boat boat, double targetY, Location start, double iceDistance, int steps, double motionX, double motionZ) {
+		UUID id = boat.getUniqueId();
+		climbing.add(id);
+		// 임시 진단용 기록: 동작이 안정되면 제거한다.
+		getLogger().info("climb start: type=" + boat.getType() + " speed=" + Math.hypot(motionX, motionZ)
+			+ " start=" + start.getX() + "," + start.getY() + "," + start.getZ() + " targetY=" + targetY + " iceDistance=" + iceDistance + " steps=" + steps);
+
+		new BukkitRunnable() {
+			// 서버가 아는 보트 위치는 지연 시간만큼 늦으므로, 오르는 동안의 높이는 보낸 속도를 직접 누적해서 추정한다.
+			private double predictedY = start.getY();
+			private int ticks;
+			// 착지 단계에 들어선 뒤로 지난 틱 수. 0이면 아직 착지 단계가 아니다.
+			private int landingTicks;
+			// 단이 많을수록 오르는 데 시간이 더 걸리므로, 포기하는 시간도 그만큼 늘린다.
+			private final int timeout = TIMEOUT_TICKS + 6 * (steps - 1);
+
+			@Override
+			public void run() {
+				Player rider = boat.isValid() && !boat.getPassengers().isEmpty()
+					&& boat.getPassengers().getFirst() instanceof Player player ? player : null;
+				if (rider == null || ++ticks > timeout) {
+					finish(rider == null ? "not ridden" : "timeout");
+					return;
+				}
+
+				// 공중에 뜬 뒤에는 감속으로 속도를 잃지 않도록 수평 속도를 보정한다.
+				// 첫 틱에는 보트가 아직 바닥에 붙어 있어서 공중 감속을 받지 않으므로, 보정하면 오히려 빨라진다.
+				double drag = ticks == 1 ? 1 : AIR_DRAG;
+				double sendX = motionX / drag;
+				double sendZ = motionZ / drag;
+
+				// 착지 단계에서는 아래로 누르지 않고, 중력으로 떨어질 때와 똑같은 속도를 보내서 자연스럽게 내려앉게 한다.
+				// 떠 있는 높이(0.1블록)는 두 틱이면 다 내려오므로, 두 틱 동안 수평 속도만 유지해 주고 끝낸다.
+				if (landingTicks > 0) {
+					sendMotion(rider, boat, sendX, -BOAT_GRAVITY * (landingTicks - 1), sendZ);
+					if (++landingTicks > 2) {
+						finish("landed");
+					}
+					return;
+				}
+
+				double rise = Math.clamp(targetY - predictedY + OVERSHOOT, 0, MAX_RISE_SPEED);
+				// 부동소수점 오차 때문에 정확히 0이 되지 않으므로, 충분히 작으면 다 올라온 것으로 본다.
+				if (rise >= 1.0E-6) {
+					predictedY += rise;
+					sendMotion(rider, boat, sendX, rise + BOAT_GRAVITY, sendZ);
+					return;
+				}
+
+				Location actual = boat.getLocation();
+				double height = actual.getY() - targetY;
+
+				if (height >= -0.05) {
+					// 실제 보트가 얼음 위에 걸쳐 있으면 착지 단계로 넘어간다.
+					if (isSupported(boat, actual, targetY)) {
+						landingTicks = 1;
+						sendMotion(rider, boat, sendX, 0, sendZ);
+						landingTicks++;
+						return;
+					}
+
+					// 얼음이 있던 자리를 이미 지나쳤으면 더 띄우지 않고 중력에 맡긴다.
+					double traveled = Math.hypot(actual.getX() - start.getX(), actual.getZ() - start.getZ());
+					if (traveled > iceDistance + boat.getWidth()) {
+						finish("passed");
+						return;
+					}
+				}
+
+				// 패킷이 겹치거나 늦게 도착해서 높이가 어긋났으면, 실제 높이를 보고 목표 높이로 천천히 되돌린다.
+				double correction = Math.clamp((OVERSHOOT - height) * 0.3, -0.1, 0.2);
+				sendMotion(rider, boat, sendX, correction + BOAT_GRAVITY, sendZ);
+			}
+
+			private void finish(String reason) {
+				Location actual = boat.getLocation();
+				getLogger().info("climb end: reason=" + reason + " ticks=" + ticks + " predictedY=" + predictedY
+					+ " actual=" + actual.getX() + "," + actual.getY() + "," + actual.getZ());
+				climbing.remove(id);
+				cancel();
+			}
+		}.runTaskTimer(this, 0, 1);
+	}
+
+	/**
+	 * 보트의 속도를 탑승자의 클라이언트에만 직접 전송한다.
+	 * Boat#setVelocity를 쓰면 서버가 다음 틱에 속도를 0으로 되돌리면서 그 0도 클라이언트에 보내기 때문에,
+	 * 오르기가 끝난 직후에 보트가 멈춰 버린다. 그래서 서버 쪽 속도는 건드리지 않는다.
+	 */
+	private static void sendMotion(Player rider, Boat boat, double x, double y, double z) {
+		((CraftPlayer) rider).getHandle().connection.send(
+			new ClientboundSetEntityMotionPacket(boat.getEntityId(), new Vec3(x, y, z)));
+	}
+
+	/** 이번 이동량을 기록에 추가하고, 최근 이동량의 중앙값을 돌려준다. */
+	private static double medianSpeed(BoatState state, double measured) {
+		double[] samples = state.speeds;
+		if (samples == null) {
+			samples = new double[SPEED_SAMPLES];
+			Arrays.fill(samples, measured);
+			state.speeds = samples;
+		} else {
+			System.arraycopy(samples, 1, samples, 0, SPEED_SAMPLES - 1);
+			samples[SPEED_SAMPLES - 1] = measured;
+		}
+
+		double[] sorted = samples.clone();
+		Arrays.sort(sorted);
+		return sorted[SPEED_SAMPLES / 2];
+	}
+
+	/**
+	 * 보트 밑면이 목표 높이 바로 아래의 블록에 실제로 걸쳐 있는지 확인한다.
+	 * 밑면의 가장자리가 블록에 닿기만 한 상태를 걸친 것으로 판정하면, 내려앉다가 블록 옆으로 떨어져서 옆면에 걸린다.
+	 * 그래서 밑면을 0.1블록 좁게 잡아서, 그만큼은 확실히 겹쳐 있을 때에만 걸친 것으로 본다.
+	 */
+	private static boolean isSupported(Boat boat, Location at, double targetY) {
+		double half = boat.getWidth() / 2 - 0.1;
+		int y = (int) Math.floor(targetY - 0.5);
+		for (int x = (int) Math.floor(at.getX() - half); x <= (int) Math.floor(at.getX() + half); x++) {
+			for (int z = (int) Math.floor(at.getZ() - half); z <= (int) Math.floor(at.getZ() + half); z++) {
+				if (!at.getWorld().getBlockAt(x, y, z).isPassable()) {
+					return true;
+				}
+			}
+		}
+		return false;
+	}
+}

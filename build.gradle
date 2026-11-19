@@ -1,0 +1,30 @@
+plugins {
+	id 'java'
+}
+
+repositories {
+	maven {
+		name = 'PaperMC'
+		url = 'https://repo.papermc.io/repository/maven-public/'
+	}
+}
+
+dependencies {
+	compileOnly "io.papermc.paper:paper-api:${project.paper_api_version}"
+	// 속도 패킷을 직접 보내기 위해 서버 내부 클래스가 필요하다. 서버를 한 번 실행하면 생성되는 파일이다.
+	compileOnly files("server/versions/26.3/paper-26.3.jar")
+}
+
+processResources {
+	def version = project.version
+	inputs.property "version", version
+
+	filesMatching("plugin.yml") {
+		expand "version": version
+	}
+}
+
+tasks.withType(JavaCompile).configureEach {
+	it.options.release = 25
+	it.options.encoding = 'UTF-8'
+}

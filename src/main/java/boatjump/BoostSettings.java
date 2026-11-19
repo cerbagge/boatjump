@@ -1,0 +1,121 @@
+package boatjump;
+
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import org.bukkit.configuration.ConfigurationSection;
+
+/** 보트에 적용하는 설정값 묶음. 마커마다 하나씩 가지며, 마커 밖에서는 기본값이 적용된다. */
+final class BoostSettings {
+	/** 숫자 항목 하나의 정의. random에 범위를 생략했을 때의 범위와, 입력할 수 있는 한계를 함께 가진다. */
+	private record Spec(double initial, double randomMin, double randomMax, double lowest, double highest) { }
+
+	private static final Map<String, Spec> SPECS = new LinkedHashMap<>();
+
+	static {
+		// 푸른얼음 위에서 속도에 곱하는 배율. 1보다 작으면 느려진다.
+		SPECS.put("multiplier", new Spec(2.0, 0.1, 2.0, 0.0, 10.0));
+		// 푸른얼음 위에서 배율과 별도로 더하는 속도(블록/틱).
+		SPECS.put("bonus", new Spec(0.0, 0.0, 0.5, 0.0, 5.0));
+		// 푸른얼음 가속으로 도달할 수 있는 최고 속도(블록/틱). 바닐라 푸른얼음의 최고 속도는 약 3.6이다.
+		// 틱당 10블록을 넘으면 서버가 "너무 빠르게 움직였다"고 판단하여 보트를 되돌린다.
+		SPECS.put("max", new Spec(8.0, 1.0, 8.0, 0.1, 9.5));
+		// 넘을 수 없는 벽에 부딪혔을 때 뒤로 튕기는 정도. 부딪힌 속도에 곱한다. 0이면 튕기지 않는다.
+		SPECS.put("wallbounce", new Spec(0.5, 0.0, 1.0, 0.0, 3.0));
+		// 탄성 계수. 바닥에 떨어졌을 때 떨어진 속도에 곱해서 다시 튀어 오른다. 0이면 튀지 않는다.
+		SPECS.put("elasticity", new Spec(0.0, 0.0, 1.0, 0.0, 1.5));
+		// 슬라임 블록을 밟았을 때 위로 튕기는 속도(블록/틱). 0이면 튕기지 않는다.
+		SPECS.put("slime", new Spec(0.5, 0.2, 1.0, 0.0, 3.0));
+	}
+
+	static final List<String> KEYS;
+
+	static {
+		List<String> keys = new java.util.ArrayList<>(List.of("enabled", "interval"));
+		keys.addAll(SPECS.keySet());
+		KEYS = List.copyOf(keys);
+	}
+
+	/** 푸른얼음 가속을 켤지 여부. */
+	boolean enabled = true;
+	/** 같은 구역 안에서 다시 가속하기까지의 간격(틱). 0이면 구역에 들어설 때 한 번만 가속한다. */
+	int interval = 0;
+	private final Map<String, Value> values = new LinkedHashMap<>();
+
+	BoostSettings() {
+		SPECS.forEach((key, spec) -> values.put(key, Value.fixed(spec.initial())));
+	}
+
+	BoostSettings copy() {
+		BoostSettings copy = new BoostSettings();
+		copy.enabled = enabled;
+		copy.interval = interval;
+		copy.values.putAll(values);
+		return copy;
+	}
+
+	/** 숫자 항목의 현재 값. 무작위 항목이면 현재 서버 틱에 해당하는 값을 돌려준다. */
+	double get(String key, int tick) {
+		return values.get(key).get(tick, key.hashCode());
+	}
+
+	/** 값을 고친다. 고칠 수 없으면 그 이유를 돌려주고, 성공하면 null을 돌려준다. */
+	String set(String key, String[] tokens) {
+		try {
+			switch (key) {
+				case "enabled" -> {
+					if (tokens.length != 1 || !(tokens[0].equals("true") || tokens[0].equals("false"))) {
+						return "enabled 값은 true 또는 false여야 합니다.";
+					}
+					enabled = Boolean.parseBoolean(tokens[0]);
+				}
+				case "interval" -> {
+					Value parsed = Value.parse(tokens, 0, 0, 0, 1200);
+					if (parsed.period != 0) {
+						return "interval에는 random을 쓸 수 없습니다.";
+					}
+					interval = (int) parsed.min;
+				}
+				default -> {
+					Spec spec = SPECS.get(key);
+					if (spec == null) {
+						return "알 수 없는 항목입니다. 사용할 수 있는 항목: " + String.join(", ", KEYS);
+					}
+					values.put(key, Value.parse(tokens, spec.randomMin(), spec.randomMax(), spec.lowest(), spec.highest()));
+				}
+			}
+			return null;
+		} catch (IllegalArgumentException e) {
+			return e.getMessage();
+		}
+	}
+
+	String describe() {
+		StringBuilder text = new StringBuilder("enabled=" + enabled + ", interval=" + interval);
+		values.forEach((key, value) -> text.append(", ").append(key).append('=').append(value));
+		return text.toString();
+	}
+
+	void save(ConfigurationSection section) {
+		section.set("enabled", enabled);
+		section.set("interval", interval);
+		values.forEach((key, value) -> section.set(key, value.toString()));
+	}
+
+	static BoostSettings load(ConfigurationSection section) {
+		BoostSettings settings = new BoostSettings();
+		if (section == null) {
+			return settings;
+		}
+		settings.enabled = section.getBoolean("enabled", settings.enabled);
+		settings.interval = section.getInt("interval", settings.interval);
+		for (String key : SPECS.keySet()) {
+			String text = section.getString(key);
+			if (text != null) {
+				// 파일의 값이 잘못되어 있으면 그 항목만 초기값으로 둔다.
+				settings.set(key, text.trim().split("\\s+"));
+			}
+		}
+		return settings;
+	}
+}
