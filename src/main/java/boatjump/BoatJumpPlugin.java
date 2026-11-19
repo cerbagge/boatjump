@@ -64,7 +64,7 @@ public final class BoatJumpPlugin extends JavaPlugin implements Listener {
 	private static final int WALL_COOLDOWN_TICKS = 10;
 	/** 바닥에서 위로 튕긴 뒤 다시 튕길 수 있을 때까지의 간격(틱). */
 	private static final int SLIME_COOLDOWN_TICKS = 6;
-	/** 슬라임 값을 정하지 않은 곳에서 슬라임 블록이 보트를 위로 튕기는 속도(블록/틱). */
+	/** 점프 값을 정하지 않은 곳에서 슬라임 블록이 보트를 위로 튕기는 속도(블록/틱). */
 	private static final double SLIME_BLOCK_BOUNCE = 0.5;
 	/** 이 속도(블록/틱)보다 느리게 떨어졌으면 탄성으로 튀어 오르지 않는다. 얼음에 올라선 뒤의 작은 낙하에 반응하지 않게 한다. */
 	private static final double MIN_FALL_SPEED = 0.15;
@@ -140,8 +140,8 @@ public final class BoatJumpPlugin extends JavaPlugin implements Listener {
 
 		// 단단한 블록의 윗면에 닿아 있을 때에만 위로 튕긴다. 물에 떠 있을 때에는 튕기지 않는다.
 		boolean resting = !groundBlock.isPassable() && to.getY() - (groundBlock.getY() + 1) < 0.05;
-		// 마커 안에서는 블록의 종류와 관계없이 슬라임 값으로 튕기고, 마커 밖에서는 슬라임 블록 위에서만 튕긴다.
-		// 슬라임 값을 정하지 않은 곳에서도 슬라임 블록은 기본 세기로 튕긴다.
+		// 마커 안에서는 블록의 종류와 관계없이 점프 값으로 튕기고, 마커 밖에서는 슬라임 블록 위에서만 튕긴다.
+		// 점프 값을 정하지 않은 곳에서도 슬라임 블록은 기본 세기로 튕긴다.
 		boolean onSlime = ground == Material.SLIME_BLOCK;
 		double launch = marker != null || onSlime ? settings.get("bounce", now) : 0;
 		if (launch <= 0 && onSlime) {

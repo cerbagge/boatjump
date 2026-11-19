@@ -50,7 +50,7 @@ final class BoostSettings {
 		KOREAN.put("speed", "속도");
 		KOREAN.put("step", "계단");
 		KOREAN.put("elasticity", "탄성");
-		KOREAN.put("bounce", "슬라임");
+		KOREAN.put("bounce", "점프");
 	}
 
 	/** 명령어를 입력할 때 항목에 마우스를 올리면 보여 주는 설명. */
