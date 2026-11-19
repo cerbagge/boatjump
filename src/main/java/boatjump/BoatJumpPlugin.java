@@ -261,14 +261,9 @@ public final class BoatJumpPlugin extends JavaPlugin implements Listener {
 		int patience = (int) (ahead / speed) + TIMEOUT_TICKS;
 		// 오르기를 시작할 때 보트가 향하던 방향. 오르는 동안 보트를 돌린 만큼 진행 방향도 함께 돌리는 데 쓴다.
 		float startYaw = boat.getLocation().getYaw();
-		// 임시 진단용 기록: 동작이 안정되면 제거한다.
-		getLogger().info("climb start: type=" + boat.getType() + " speed=" + speed
-			+ " start=" + start.getX() + "," + start.getY() + "," + start.getZ() + " targetY=" + firstTargetY);
-
 		new BukkitRunnable() {
 			// 올라설 높이. 오르는 도중에 다음 단이 보이면 한 단씩 높아진다.
 			private int targetY = firstTargetY;
-			private int steps = 1;
 			// 서버가 아는 보트 위치는 지연 시간만큼 늦으므로, 오르는 동안의 높이는 보낸 속도를 직접 누적해서 추정한다.
 			private double predictedY = start.getY();
 			private int ticks;
@@ -284,7 +279,7 @@ public final class BoatJumpPlugin extends JavaPlugin implements Listener {
 				Player rider = boat.isValid() && !boat.getPassengers().isEmpty()
 					&& boat.getPassengers().getFirst() instanceof Player player ? player : null;
 				if (rider == null) {
-					finish("not ridden");
+					finish();
 					return;
 				}
 				ticks++;
@@ -306,7 +301,7 @@ public final class BoatJumpPlugin extends JavaPlugin implements Listener {
 				if (landingTicks > 0) {
 					sendMotion(rider, boat, sendX, -BOAT_GRAVITY * (landingTicks - 1), sendZ);
 					if (++landingTicks > 2) {
-						finish("landed");
+						finish();
 					}
 					return;
 				}
@@ -318,7 +313,6 @@ public final class BoatJumpPlugin extends JavaPlugin implements Listener {
 						actual.getX() + nowX / speed * d, actual.getZ() + nowZ / speed * d, half, targetY);
 					if (found == ICE) {
 						targetY++;
-						steps++;
 						lastStepTick = ticks;
 					}
 					if (found != NOTHING) {
@@ -335,12 +329,12 @@ public final class BoatJumpPlugin extends JavaPlugin implements Listener {
 				}
 				lostTicks = stepAhead ? 0 : lostTicks + 1;
 				if (lostTicks > LOST_STEP_TICKS) {
-					finish("lost");
+					finish();
 					return;
 				}
 
 				if (ticks - lastStepTick > patience) {
-					finish("timeout");
+					finish();
 					return;
 				}
 
@@ -367,10 +361,7 @@ public final class BoatJumpPlugin extends JavaPlugin implements Listener {
 				sendMotion(rider, boat, sendX, correction + BOAT_GRAVITY, sendZ);
 			}
 
-			private void finish(String reason) {
-				Location actual = boat.getLocation();
-				getLogger().info("climb end: reason=" + reason + " ticks=" + ticks + " steps=" + steps + " targetY=" + targetY
-					+ " actual=" + actual.getX() + "," + actual.getY() + "," + actual.getZ());
+			private void finish() {
 				climbing.remove(id);
 				cancel();
 			}
