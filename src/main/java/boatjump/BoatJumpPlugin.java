@@ -189,18 +189,29 @@ public final class BoatJumpPlugin extends JavaPlugin implements Listener {
 		// 물 위에서는 튕기지 않는다. 그러지 않으면 보트를 물가에 댈 수 없게 된다.
 		// 이 자리에서 보트가 한 번에 오를 수 있는 높이(칸). 0이면 오르지 않는다.
 		int maxStep = (int) Math.round(settings.get("step", now));
-		// 벽에서 튕기는 세기는 탄성 값을 따른다.
-		double wallBounce = settings.wallBounce ? settings.get("elasticity", now) : 0;
-		if (wallBounce > 0 && !groundBlock.isLiquid() && now - state.lastWallTick >= WALL_COOLDOWN_TICKS) {
-			boolean hitX = Math.abs(motionX) >= WALL_MIN_SPEED && probe(world,
-				to.getX() + Math.signum(motionX) * (Math.abs(motionX) * WALL_LOOKAHEAD_TICKS + 0.1), to.getZ(), half, feetY, maxStep) == SOLID;
-			boolean hitZ = Math.abs(motionZ) >= WALL_MIN_SPEED && probe(world,
-				to.getX(), to.getZ() + Math.signum(motionZ) * (Math.abs(motionZ) * WALL_LOOKAHEAD_TICKS + 0.1), half, feetY, maxStep) == SOLID;
+		if (!groundBlock.isLiquid() && now - state.lastWallTick >= WALL_COOLDOWN_TICKS) {
+			double wallX = to.getX() + Math.signum(motionX) * (Math.abs(motionX) * WALL_LOOKAHEAD_TICKS + 0.1);
+			double wallZ = to.getZ() + Math.signum(motionZ) * (Math.abs(motionZ) * WALL_LOOKAHEAD_TICKS + 0.1);
+			boolean hitX = Math.abs(motionX) >= WALL_MIN_SPEED && probe(world, wallX, to.getZ(), half, feetY, maxStep) == SOLID;
+			boolean hitZ = Math.abs(motionZ) >= WALL_MIN_SPEED && probe(world, to.getX(), wallZ, half, feetY, maxStep) == SOLID;
 			if (hitX || hitZ) {
-				state.lastWallTick = now;
-				sendMotion(rider, boat,
-					hitX ? -motionX * wallBounce : motionX, 0, hitZ ? -motionZ * wallBounce : motionZ);
-				return;
+				// 벽 자체를 마커로 지정해 두었으면 그 마커의 설정값을 쓰고, 아니면 보트가 있는 자리의 설정값을 쓴다.
+				Marker wall = hitX ? wallMarker(world, wallX, to.getZ(), half, feetY) : null;
+				if (wall == null && hitZ) {
+					wall = wallMarker(world, to.getX(), wallZ, half, feetY);
+				}
+				BoostSettings wallSettings = wall != null ? store.settingsOf(wall) : settings;
+				// 벽에서 튕기는 세기는 탄성 값을 따른다.
+				double wallBounce = wallSettings.wallBounce ? wallSettings.get("elasticity", now) : 0;
+				if (wallBounce > 0) {
+					state.lastWallTick = now;
+					// 서버가 보트를 되돌려 놓는 속도를 넘지 않게 한다.
+					double limit = BoostSettings.SERVER_SPEED_LIMIT;
+					sendMotion(rider, boat,
+						hitX ? Math.clamp(-motionX * wallBounce, -limit, limit) : motionX, 0,
+						hitZ ? Math.clamp(-motionZ * wallBounce, -limit, limit) : motionZ);
+					return;
+				}
 			}
 		}
 
@@ -265,6 +276,21 @@ public final class BoatJumpPlugin extends JavaPlugin implements Listener {
 			}
 		}
 		return result;
+	}
+
+	/** 중심이 (centerX, centerZ)인 보트 밑면 아래의 y 높이에서, 막힌 블록을 포함하고 있는 마커를 찾는다. 없으면 null이다. */
+	private Marker wallMarker(World world, double centerX, double centerZ, double half, int y) {
+		for (int x = (int) Math.floor(centerX - half); x <= (int) Math.floor(centerX + half); x++) {
+			for (int z = (int) Math.floor(centerZ - half); z <= (int) Math.floor(centerZ + half); z++) {
+				if (!world.getBlockAt(x, y, z).isPassable()) {
+					Marker marker = store.find(world.getName(), x, y, z);
+					if (marker != null) {
+						return marker;
+					}
+				}
+			}
+		}
+		return null;
 	}
 
 	/**
