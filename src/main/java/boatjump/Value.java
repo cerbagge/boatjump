@@ -55,7 +55,7 @@ final class Value {
 					period = (int) number(tokens[3]);
 				}
 			}
-			default -> throw new IllegalArgumentException("형식: random [최소 최대] [틱]");
+			default -> throw new IllegalArgumentException("형식: 무작위 [최소 최대] [틱]");
 		}
 		if (min > max) {
 			throw new IllegalArgumentException("최소값이 최대값보다 클 수 없습니다.");
@@ -88,6 +88,11 @@ final class Value {
 		}
 		long bucket = tick / period;
 		return new SplittableRandom(bucket * 0x9E3779B97F4A7C15L + salt).nextDouble(min, max);
+	}
+
+	/** 사람이 읽을 수 있도록 한국어로 적은 값. 파일에 저장할 때에는 toString을 쓴다. */
+	String display() {
+		return period == 0 ? String.valueOf(min) : "무작위 " + min + "~" + max + " (" + period + "틱마다)";
 	}
 
 	@Override

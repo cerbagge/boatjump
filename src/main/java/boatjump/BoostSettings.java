@@ -36,6 +36,20 @@ final class BoostSettings {
 		KEYS = List.copyOf(keys);
 	}
 
+	/** 설정 항목의 한국어 이름. 영어 이름에서 한국어 이름으로. */
+	static final Map<String, String> KOREAN = new LinkedHashMap<>();
+
+	static {
+		KOREAN.put("enabled", "사용");
+		KOREAN.put("interval", "간격");
+		KOREAN.put("multiplier", "배율");
+		KOREAN.put("bonus", "추가속도");
+		KOREAN.put("max", "최고속도");
+		KOREAN.put("wallbounce", "벽튕김");
+		KOREAN.put("elasticity", "탄성");
+		KOREAN.put("slime", "슬라임");
+	}
+
 	/** 명령어를 입력할 때 항목에 마우스를 올리면 보여 주는 설명. */
 	static final Map<String, String> DESCRIPTIONS = Map.of(
 		"enabled", "마커의 속도 변화를 켤지 여부입니다. true 또는 false (초기값 true)",
@@ -76,21 +90,21 @@ final class BoostSettings {
 			switch (key) {
 				case "enabled" -> {
 					if (tokens.length != 1 || !(tokens[0].equals("true") || tokens[0].equals("false"))) {
-						return "enabled 값은 true 또는 false여야 합니다.";
+						return "사용 값은 켜기 또는 끄기여야 합니다.";
 					}
 					enabled = Boolean.parseBoolean(tokens[0]);
 				}
 				case "interval" -> {
 					Value parsed = Value.parse(tokens, 0, 0, 0, 1200);
 					if (parsed.period != 0) {
-						return "interval에는 random을 쓸 수 없습니다.";
+						return "간격에는 무작위를 쓸 수 없습니다.";
 					}
 					interval = (int) parsed.min;
 				}
 				default -> {
 					Spec spec = SPECS.get(key);
 					if (spec == null) {
-						return "알 수 없는 항목입니다. 사용할 수 있는 항목: " + String.join(", ", KEYS);
+						return "알 수 없는 항목입니다. 사용할 수 있는 항목: " + String.join(", ", KOREAN.values());
 					}
 					values.put(key, Value.parse(tokens, spec.randomMin(), spec.randomMax(), spec.lowest(), spec.highest()));
 				}
@@ -101,9 +115,10 @@ final class BoostSettings {
 		}
 	}
 
+	/** 사람이 읽을 수 있도록 한국어로 적은 설정값. */
 	String describe() {
-		StringBuilder text = new StringBuilder("enabled=" + enabled + ", interval=" + interval);
-		values.forEach((key, value) -> text.append(", ").append(key).append('=').append(value));
+		StringBuilder text = new StringBuilder("사용=" + (enabled ? "켜기" : "끄기") + ", 간격=" + interval);
+		values.forEach((key, value) -> text.append(", ").append(KOREAN.get(key)).append('=').append(value.display()));
 		return text.toString();
 	}
 

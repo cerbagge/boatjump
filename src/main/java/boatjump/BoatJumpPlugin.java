@@ -132,7 +132,7 @@ public final class BoatJumpPlugin extends JavaPlugin implements Listener {
 		if (marker == null) {
 			marker = store.find(world.getName(), to.getBlockX(), to.getBlockY(), to.getBlockZ());
 		}
-		BoostSettings settings = marker != null ? marker.settings : store.defaults();
+		BoostSettings settings = marker != null ? store.settingsOf(marker) : store.defaults();
 
 		// 단단한 블록의 윗면에 닿아 있을 때에만 위로 튕긴다. 물에 떠 있을 때에는 튕기지 않는다.
 		boolean resting = !groundBlock.isPassable() && to.getY() - (groundBlock.getY() + 1) < 0.05;

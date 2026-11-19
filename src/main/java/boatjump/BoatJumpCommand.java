@@ -21,72 +21,79 @@ import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
 
-/** /보트점프(/boatjump) 명령어. 한국어와 영어로 모두 입력할 수 있다. 마커 막대기 지급, 마커와 그룹 관리, 설정값 수정, 뛰어넘을 블록 관리를 맡는다. */
+/**
+ * /보트점프(/boatjump) 명령어. 한국어와 영어로 모두 입력할 수 있다.
+ * 이름을 적지 않는 명령어는 플레이어가 지금 서 있는 마커(또는 그 마커의 그룹)를 대상으로 한다.
+ */
 final class BoatJumpCommand implements TabExecutor, Listener {
-	/** 하위 명령어 하나의 한국어 이름과 사용법, 설명. 도움말과 자동 완성의 설명에 함께 쓴다. */
-	private record Sub(String korean, String usage, String description) { }
+	/** 도움말 한 줄. 사용법과 설명, 클릭했을 때 입력창에 채울 내용. */
+	private record Help(String usage, String description, String suggestion) { }
 
-	/** 영어 이름을 기준으로 한 하위 명령어 목록. 한국어 이름으로도 입력할 수 있다. */
-	private static final Map<String, Sub> SUBCOMMANDS = new LinkedHashMap<>();
+	private static final List<Help> HELP = List.of(
+		new Help("/보트점프 막대기", "마커 막대기를 받습니다. 블록을 좌클릭하면 첫째 지점, 우클릭하면 둘째 지점이 지정됩니다.", "막대기"),
+		new Help("/보트점프 생성 <이름>", "막대기로 선택한 범위로 마커를 만듭니다.", "생성 "),
+		new Help("/보트점프 생성 그룹 <이름>", "빈 그룹을 만듭니다. 그룹에 넣은 마커들은 그룹의 설정값을 함께 씁니다.", "생성 그룹 "),
+		new Help("/보트점프 삭제 <이름>", "마커를 지웁니다.", "삭제 "),
+		new Help("/보트점프 삭제 그룹 <이름>", "그룹을 지웁니다. 속해 있던 마커는 그룹의 설정값을 물려받고 남습니다.", "삭제 그룹 "),
+		new Help("/보트점프 리스트", "모든 마커의 이름과 그룹, 범위를 봅니다.", "리스트"),
+		new Help("/보트점프 정보", "지금 서 있는 마커의 설정값을 봅니다. 마커 밖에 서 있으면 기본값을 봅니다.", "정보"),
+		new Help("/보트점프 정보 <이름>", "그 마커의 설정값을 봅니다. 이름에 기본값을 적으면 기본값을 봅니다.", "정보 "),
+		new Help("/보트점프 정보 그룹 <이름>", "그 그룹의 설정값과 속한 마커를 봅니다.", "정보 그룹 "),
+		new Help("/보트점프 설정 <항목> <값>", "지금 서 있는 마커의 설정값을 고칩니다. 마커 밖에 서 있으면 기본값을 고칩니다.", "설정 "),
+		new Help("/보트점프 설정 <이름> <항목> <값>", "그 마커의 설정값을 고칩니다. 이름에 기본값을 적으면 기본값을 고칩니다.", "설정 "),
+		new Help("/보트점프 그룹 추가 <이름>", "그룹 이름을 적으면 지금 서 있는 마커를 그 그룹에 넣습니다. "
+			+ "마커 이름을 적으면 그 마커를 지금 서 있는 마커의 그룹에 넣습니다.", "그룹 추가 "),
+		new Help("/보트점프 그룹 제거 <이름>", "그 마커를 그룹에서 뺍니다. 마커는 그룹의 설정값을 물려받습니다.", "그룹 제거 "),
+		new Help("/보트점프 그룹 리스트", "모든 그룹과 속한 마커를 봅니다.", "그룹 리스트"),
+		new Help("/보트점프 그룹 정보", "지금 서 있는 마커가 속한 그룹의 설정값을 봅니다.", "그룹 정보"),
+		new Help("/보트점프 그룹 설정 <항목> <값>", "지금 서 있는 마커가 속한 그룹의 설정값을 고칩니다. 그룹의 모든 마커에 적용됩니다.", "그룹 설정 "),
+		new Help("/보트점프 점프블록 추가 <블록...>", "보트가 한 칸 높이일 때 뛰어넘을 블록을 추가합니다.", "점프블록 추가 "),
+		new Help("/보트점프 점프블록 삭제 <블록...>", "보트가 뛰어넘을 블록을 목록에서 삭제합니다.", "점프블록 삭제 "),
+		new Help("/보트점프 점프블록 리스트", "보트가 뛰어넘는 블록의 목록을 봅니다.", "점프블록 리스트"));
 
-	static {
-		SUBCOMMANDS.put("markers", new Sub("마커", "/보트점프 마커",
-			"마커 막대기를 받습니다. 블록을 좌클릭하면 첫째 지점, 우클릭하면 둘째 지점이 지정됩니다."));
-		SUBCOMMANDS.put("create", new Sub("생성", "/보트점프 생성 <이름> [그룹]",
-			"막대기로 선택한 범위로 마커를 만듭니다. 그룹을 적으면 그 그룹에 넣습니다."));
-		SUBCOMMANDS.put("remove", new Sub("삭제", "/보트점프 삭제 <이름>",
-			"마커를 지웁니다."));
-		SUBCOMMANDS.put("list", new Sub("목록", "/보트점프 목록",
-			"모든 마커의 이름과 그룹, 범위를 봅니다."));
-		SUBCOMMANDS.put("info", new Sub("정보", "/보트점프 정보 <이름|기본값>",
-			"마커의 설정값을 봅니다. 기본값을 적으면 마커 밖에서 쓰이는 기본 설정값을 봅니다."));
-		SUBCOMMANDS.put("set", new Sub("설정", "/보트점프 설정 <이름|기본값> <항목> <값>",
-			"설정값을 고칩니다. 그룹에 속한 마커를 고치면 같은 그룹의 마커가 모두 바뀝니다. "
-				+ "값에는 숫자, 또는 무작위 [최소 최대] [틱]을 쓸 수 있습니다."));
-		SUBCOMMANDS.put("group", new Sub("그룹", "/보트점프 그룹 <이름> <그룹|없음>",
-			"마커의 그룹을 지정하거나 해제합니다. 없는 마커 이름이면 선택한 범위로 새로 만듭니다."));
-		SUBCOMMANDS.put("jumpblock", new Sub("점프블록", "/보트점프 점프블록 <추가|삭제|목록> [블록...]",
-			"보트가 한 칸 높이일 때 뛰어넘을 블록을 추가하거나, 삭제하거나, 목록을 봅니다."));
-	}
-
-	/** 한국어로 입력한 하위 명령어를 영어 이름으로 바꾸는 표. */
-	private static final Map<String, String> SUB_ALIASES = new LinkedHashMap<>();
-
-	static {
-		SUBCOMMANDS.forEach((name, sub) -> SUB_ALIASES.put(sub.korean(), name));
-	}
-
-	/** 점프블록 명령어의 동작. 한국어 이름에서 영어 이름으로. */
-	private static final Map<String, String> ACTION_ALIASES = Map.of("추가", "add", "삭제", "remove", "목록", "list");
-
-	/** 설정 항목의 한국어 이름. 영어 이름에서 한국어 이름으로. */
-	private static final Map<String, String> KEY_KOREAN = new LinkedHashMap<>();
-	/** 설정 항목의 한국어 이름에서 영어 이름으로. */
+	/** 하위 명령어. 한국어와 영어 낱말에서 내부 이름으로. */
+	private static final Map<String, String> TOP = new LinkedHashMap<>();
+	/** 그룹 명령어의 동작. */
+	private static final Map<String, String> GROUP_ACTIONS = new LinkedHashMap<>();
+	/** 점프블록 명령어의 동작. */
+	private static final Map<String, String> BLOCK_ACTIONS = new LinkedHashMap<>();
+	/** 설정 항목. 한국어 이름에서 영어 이름으로. */
 	private static final Map<String, String> KEY_ALIASES = new LinkedHashMap<>();
-
-	static {
-		KEY_KOREAN.put("enabled", "사용");
-		KEY_KOREAN.put("interval", "간격");
-		KEY_KOREAN.put("multiplier", "배율");
-		KEY_KOREAN.put("bonus", "추가속도");
-		KEY_KOREAN.put("max", "최고속도");
-		KEY_KOREAN.put("wallbounce", "벽튕김");
-		KEY_KOREAN.put("elasticity", "탄성");
-		KEY_KOREAN.put("slime", "슬라임");
-		KEY_KOREAN.forEach((english, korean) -> KEY_ALIASES.put(korean, english));
-	}
-
 	/** 설정값에 쓰는 낱말. 한국어에서 영어로. */
 	private static final Map<String, String> VALUE_ALIASES = Map.of("무작위", "random", "켜기", "true", "끄기", "false");
 
-	/** 기본 설정값을 가리키는 한국어 이름. */
-	private static final String DEFAULT_KOREAN = "기본값";
-	/** 그룹 없음을 가리키는 한국어 이름. */
-	private static final String NONE_KOREAN = "없음";
+	static {
+		put(TOP, "wand", "막대기", "wand", "markers");
+		put(TOP, "create", "생성", "create");
+		put(TOP, "remove", "삭제", "remove", "delete");
+		put(TOP, "list", "리스트", "목록", "list");
+		put(TOP, "info", "정보", "info");
+		put(TOP, "set", "설정", "set");
+		put(TOP, "group", "그룹", "group");
+		put(TOP, "jumpblock", "점프블록", "jumpblock");
+
+		put(GROUP_ACTIONS, "add", "추가", "add");
+		put(GROUP_ACTIONS, "remove", "제거", "삭제", "remove");
+		put(GROUP_ACTIONS, "list", "리스트", "목록", "list");
+		put(GROUP_ACTIONS, "info", "정보", "info");
+		put(GROUP_ACTIONS, "set", "설정", "set");
+
+		put(BLOCK_ACTIONS, "add", "추가", "add");
+		put(BLOCK_ACTIONS, "remove", "삭제", "제거", "remove");
+		put(BLOCK_ACTIONS, "list", "리스트", "목록", "list");
+
+		BoostSettings.KOREAN.forEach((english, korean) -> KEY_ALIASES.put(korean, english));
+	}
+
+	private static void put(Map<String, String> table, String canonical, String... words) {
+		for (String word : words) {
+			table.put(word, canonical);
+		}
+	}
 
 	private static final Pattern NAME = Pattern.compile("[0-9A-Za-z가-힣_-]{1,32}");
-	/** 기본 설정값을 가리키는 예약된 이름. */
-	private static final String DEFAULT = "default";
+	private static final String GROUP_WORD = "그룹";
+	private static final String DEFAULT_WORD = "기본값";
 
 	private final MarkerStore store;
 	private final MarkerWand wand;
@@ -96,17 +103,80 @@ final class BoatJumpCommand implements TabExecutor, Listener {
 		this.wand = wand;
 	}
 
+	// ---- 낱말 해석 ----
+
+	private static String top(String word) {
+		return TOP.getOrDefault(word.toLowerCase(Locale.ROOT), "");
+	}
+
+	private static boolean isGroupWord(String word) {
+		return word.equals(GROUP_WORD) || word.equalsIgnoreCase("group");
+	}
+
+	private static boolean isDefaultWord(String word) {
+		return word.equals(DEFAULT_WORD) || word.equalsIgnoreCase("default");
+	}
+
+	/** 설정 항목의 영어 이름. 설정 항목이 아니면 null이다. */
+	private static String key(String word) {
+		String english = KEY_ALIASES.getOrDefault(word, word.toLowerCase(Locale.ROOT));
+		return BoostSettings.KEYS.contains(english) ? english : null;
+	}
+
+	private static String[] values(String[] args, int from) {
+		String[] tokens = Arrays.copyOfRange(args, from, args.length);
+		for (int i = 0; i < tokens.length; i++) {
+			tokens[i] = VALUE_ALIASES.getOrDefault(tokens[i], tokens[i]);
+		}
+		return tokens;
+	}
+
+	// ---- 명령어 처리 ----
+
 	@Override
-	public boolean onCommand(CommandSender sender, Command command, String label, String[] rawArgs) {
-		String[] args = normalize(rawArgs);
-		String sub = args.length == 0 ? "" : args[0];
-		switch (sub) {
-			case "markers" -> giveWand(sender);
-			case "create" -> create(sender, args);
-			case "remove" -> remove(sender, args);
-			case "list" -> list(sender);
-			case "info" -> info(sender, args);
-			case "set" -> set(sender, args);
+	public boolean onCommand(CommandSender sender, Command command, String label, String[] args) {
+		switch (args.length == 0 ? "" : top(args[0])) {
+			case "wand" -> giveWand(sender);
+			case "create" -> {
+				if (args.length == 3 && isGroupWord(args[1])) {
+					createGroup(sender, args[2]);
+				} else if (args.length == 2) {
+					createMarker(sender, args[1]);
+				} else {
+					error(sender, "사용법: /보트점프 생성 <이름> 또는 /보트점프 생성 그룹 <이름>");
+				}
+			}
+			case "remove" -> {
+				if (args.length == 3 && isGroupWord(args[1])) {
+					removeGroup(sender, args[2]);
+				} else if (args.length == 2) {
+					removeMarker(sender, args[1]);
+				} else {
+					error(sender, "사용법: /보트점프 삭제 <이름> 또는 /보트점프 삭제 그룹 <이름>");
+				}
+			}
+			case "list" -> listMarkers(sender);
+			case "info" -> {
+				if (args.length == 1) {
+					infoHere(sender);
+				} else if (args.length == 3 && isGroupWord(args[1])) {
+					infoGroup(sender, args[2]);
+				} else if (args.length == 2) {
+					infoMarker(sender, args[1]);
+				} else {
+					error(sender, "사용법: /보트점프 정보 [이름] 또는 /보트점프 정보 그룹 <이름>");
+				}
+			}
+			case "set" -> {
+				if (args.length >= 3 && key(args[1]) != null) {
+					setHere(sender, key(args[1]), values(args, 2));
+				} else if (args.length >= 4 && key(args[2]) != null) {
+					setMarker(sender, args[1], key(args[2]), values(args, 3));
+				} else {
+					error(sender, "사용법: /보트점프 설정 <항목> <값> 또는 /보트점프 설정 <이름> <항목> <값>");
+					error(sender, "항목: " + String.join(", ", BoostSettings.KOREAN.values()));
+				}
+			}
 			case "group" -> group(sender, args);
 			case "jumpblock" -> jumpBlock(sender, args);
 			default -> help(sender);
@@ -114,52 +184,18 @@ final class BoatJumpCommand implements TabExecutor, Listener {
 		return true;
 	}
 
-	/**
-	 * 한국어로 입력한 낱말을 영어 이름으로 바꾼다. 영어로 입력한 것은 그대로 둔다.
-	 * 마커 이름이나 숫자처럼 뜻이 정해져 있지 않은 자리는 건드리지 않는다.
-	 */
-	private static String[] normalize(String[] args) {
-		String[] out = args.clone();
-		if (out.length == 0) {
-			return out;
-		}
-		out[0] = SUB_ALIASES.getOrDefault(out[0], out[0].toLowerCase(Locale.ROOT));
-		String sub = out[0];
-
-		if (out.length >= 2) {
-			if ((sub.equals("set") || sub.equals("info")) && out[1].equals(DEFAULT_KOREAN)) {
-				out[1] = DEFAULT;
-			}
-			if (sub.equals("jumpblock")) {
-				out[1] = ACTION_ALIASES.getOrDefault(out[1], out[1]);
-			}
-		}
-		if (out.length >= 3) {
-			if (sub.equals("set")) {
-				out[2] = KEY_ALIASES.getOrDefault(out[2], out[2]);
-			}
-			if (sub.equals("group") && out[2].equals(NONE_KOREAN)) {
-				out[2] = "none";
-			}
-		}
-		if (sub.equals("set")) {
-			for (int i = 3; i < out.length; i++) {
-				out[i] = VALUE_ALIASES.getOrDefault(out[i], out[i]);
-			}
-		}
-		return out;
-	}
-
 	private void help(CommandSender sender) {
 		info(sender, "BoatJump 명령어 (마우스를 올리면 설명이 보이고, 클릭하면 입력창에 채워집니다)");
-		SUBCOMMANDS.forEach((name, sub) -> sender.sendMessage(Component.text(sub.usage(), NamedTextColor.AQUA)
-			.hoverEvent(HoverEvent.showText(Component.text(sub.description() + "\n영어: /boatjump " + name)))
-			.clickEvent(ClickEvent.suggestCommand("/보트점프 " + sub.korean() + " "))));
+		for (Help line : HELP) {
+			sender.sendMessage(Component.text(line.usage(), NamedTextColor.AQUA)
+				.hoverEvent(HoverEvent.showText(Component.text(line.description())))
+				.clickEvent(ClickEvent.suggestCommand("/보트점프 " + line.suggestion())));
+		}
 		sender.sendMessage(Component.text("설정 항목: ", NamedTextColor.GRAY).append(Component.join(
 			net.kyori.adventure.text.JoinConfiguration.separator(Component.text(", ", NamedTextColor.GRAY)),
-			BoostSettings.KEYS.stream().map(key -> Component.text(KEY_KOREAN.get(key), NamedTextColor.AQUA)
-				.hoverEvent(HoverEvent.showText(Component.text(BoostSettings.DESCRIPTIONS.get(key) + "\n영어: " + key)))).toList())));
-		sender.sendMessage(Component.text("모든 명령어와 항목은 영어로도 입력할 수 있습니다. (/boatjump set <이름> multiplier 2)", NamedTextColor.GRAY));
+			BoostSettings.KEYS.stream().map(key -> Component.text(BoostSettings.KOREAN.get(key), NamedTextColor.AQUA)
+				.hoverEvent(HoverEvent.showText(Component.text(BoostSettings.DESCRIPTIONS.get(key))))).toList())));
+		sender.sendMessage(Component.text("값: 숫자, 무작위 [최소 최대] [틱], 켜기, 끄기", NamedTextColor.GRAY));
 	}
 
 	private void giveWand(CommandSender sender) {
@@ -171,179 +207,304 @@ final class BoatJumpCommand implements TabExecutor, Listener {
 		info(sender, "마커 막대기를 지급했습니다. 블록을 좌클릭하면 첫째 지점, 우클릭하면 둘째 지점이 지정됩니다.");
 	}
 
-	private void create(CommandSender sender, String[] args) {
+	private void createMarker(CommandSender sender, String name) {
 		if (!(sender instanceof Player player)) {
 			error(sender, "플레이어만 사용할 수 있습니다.");
 			return;
 		}
-		if (args.length < 2 || args.length > 3) {
-			error(sender, "사용법: /보트점프 생성 <이름> [그룹]");
+		if (!validNewName(sender, name)) {
 			return;
 		}
-		String name = args[1];
-		String group = args.length == 3 ? args[2] : null;
-		if (!validName(sender, name) || (group != null && !validName(sender, group))) {
-			return;
-		}
-		if (store.get(name) != null) {
-			error(sender, "이미 있는 마커 이름입니다: " + name);
-			return;
-		}
-		createFromSelection(player, name, group);
-	}
-
-	/** 플레이어가 막대기로 선택한 범위로 마커를 만든다. 범위를 아직 다 지정하지 않았으면 안내만 한다. */
-	private void createFromSelection(Player player, String name, String group) {
 		MarkerWand.Selection selection = wand.selection(player);
 		if (!selection.complete()) {
-			error(player, "먼저 마커 막대기로 두 지점을 지정해야 합니다. (/보트점프 마커)");
+			error(sender, "먼저 마커 막대기로 두 지점을 지정해야 합니다. (/보트점프 막대기)");
 			return;
 		}
-
-		// 그룹에 이미 마커가 있으면 그 그룹의 설정값을 따르고, 없으면 기본 설정값에서 시작한다.
-		Marker marker = new Marker(name, selection.first.getWorld().getName(),
+		store.add(new Marker(name, selection.first.getWorld().getName(),
 			selection.first.getX(), selection.first.getY(), selection.first.getZ(),
-			selection.second.getX(), selection.second.getY(), selection.second.getZ(), group, store.defaults().copy());
-		if (group != null && !store.members(group).isEmpty()) {
-			Marker member = store.members(group).getFirst();
-			marker.settings = member.settings.copy();
-			marker.customized = member.customized;
-		}
-		store.add(marker);
+			selection.second.getX(), selection.second.getY(), selection.second.getZ(), null, store.defaults().copy()));
 		store.save();
-		info(player, "마커 " + name + "을(를) 만들었습니다." + (group != null ? " 그룹: " + group : ""));
+		info(sender, "마커 " + name + "을(를) 만들었습니다.");
 	}
 
-	private void remove(CommandSender sender, String[] args) {
-		if (args.length != 2) {
-			error(sender, "사용법: /보트점프 삭제 <이름>");
+	private void createGroup(CommandSender sender, String name) {
+		if (!validNewName(sender, name)) {
 			return;
 		}
-		if (store.get(args[1]) == null) {
-			error(sender, "없는 마커입니다: " + args[1]);
-			return;
-		}
-		store.remove(args[1]);
+		store.addGroup(new Group(name, store.defaults().copy()));
 		store.save();
-		info(sender, "마커 " + args[1] + "을(를) 지웠습니다.");
+		info(sender, "그룹 " + name + "을(를) 만들었습니다. 마커 위에 서서 /보트점프 그룹 추가 " + name + " 을 입력하면 그 마커가 그룹에 들어갑니다.");
 	}
 
-	private void list(CommandSender sender) {
+	private void removeMarker(CommandSender sender, String name) {
+		if (store.get(name) == null) {
+			error(sender, "없는 마커입니다: " + name);
+			return;
+		}
+		store.remove(name);
+		store.save();
+		info(sender, "마커 " + name + "을(를) 지웠습니다.");
+	}
+
+	private void removeGroup(CommandSender sender, String name) {
+		if (store.group(name) == null) {
+			error(sender, "없는 그룹입니다: " + name);
+			return;
+		}
+		int members = store.members(name).size();
+		store.removeGroup(name);
+		store.save();
+		info(sender, "그룹 " + name + "을(를) 지웠습니다." + (members > 0 ? " 속해 있던 마커 " + members + "개는 그룹의 설정값을 물려받았습니다." : ""));
+	}
+
+	private void listMarkers(CommandSender sender) {
 		if (store.all().isEmpty()) {
 			info(sender, "마커가 없습니다.");
 			return;
 		}
 		for (Marker marker : store.all()) {
-			info(sender, marker.name + (marker.group != null ? " [그룹 " + marker.group + "]" : "")
-				+ " " + marker.world + " (" + marker.minX + ", " + marker.minY + ", " + marker.minZ
-				+ ") ~ (" + marker.maxX + ", " + marker.maxY + ", " + marker.maxZ + ")");
+			info(sender, describe(marker));
 		}
 	}
 
-	private void info(CommandSender sender, String[] args) {
-		if (args.length != 2) {
-			error(sender, "사용법: /보트점프 정보 <이름|기본값>");
-			return;
-		}
-		if (args[1].equals(DEFAULT)) {
-			info(sender, "기본 설정값: " + store.defaults().describe());
-			return;
-		}
-		Marker marker = store.get(args[1]);
-		if (marker == null) {
-			error(sender, "없는 마커입니다: " + args[1]);
-			return;
-		}
-		info(sender, "마커 " + marker.name + (marker.group != null ? " [그룹 " + marker.group + "]" : "")
-			+ ": " + marker.settings.describe());
+	private static String describe(Marker marker) {
+		return "마커 " + marker.name + (marker.group != null ? " [그룹 " + marker.group + "]" : "")
+			+ " " + marker.world + " (" + marker.minX + ", " + marker.minY + ", " + marker.minZ
+			+ ") ~ (" + marker.maxX + ", " + marker.maxY + ", " + marker.maxZ + ")";
 	}
 
-	private void set(CommandSender sender, String[] args) {
-		if (args.length < 4) {
-			error(sender, "사용법: /보트점프 설정 <이름|기본값> <항목> <값>");
-			return;
-		}
-		String key = args[2].toLowerCase(Locale.ROOT);
-		String[] tokens = Arrays.copyOfRange(args, 3, args.length);
+	/** 플레이어가 지금 서 있는 마커. 마커 밖에 서 있거나 플레이어가 아니면 null이다. */
+	private Marker standing(CommandSender sender) {
+		return sender instanceof Player player ? store.at(player.getLocation()) : null;
+	}
 
-		if (args[1].equals(DEFAULT)) {
-			String problem = store.defaults().set(key, tokens);
-			if (problem != null) {
-				error(sender, problem);
-				return;
-			}
-			store.save();
-			info(sender, "기본 설정값을 고쳤습니다: " + store.defaults().describe());
-			return;
-		}
-
-		Marker marker = store.get(args[1]);
+	private void infoHere(CommandSender sender) {
+		Marker marker = standing(sender);
 		if (marker == null) {
-			error(sender, "없는 마커입니다: " + args[1]);
+			info(sender, "마커 밖입니다. 기본값: " + store.defaults().describe());
+		} else {
+			showMarker(sender, marker);
+		}
+	}
+
+	private void infoMarker(CommandSender sender, String name) {
+		if (isDefaultWord(name)) {
+			info(sender, "기본값: " + store.defaults().describe());
 			return;
 		}
-		// 그룹에 속한 마커를 고치면, 같은 그룹의 모든 마커에 똑같이 적용한다.
-		List<Marker> targets = marker.group != null ? store.members(marker.group) : List.of(marker);
-		for (Marker target : targets) {
-			String problem = target.settings.set(key, tokens);
-			if (problem != null) {
-				error(sender, problem);
-				return;
-			}
-			target.customized = true;
+		Marker marker = store.get(name);
+		if (marker == null) {
+			error(sender, "없는 마커입니다: " + name);
+			return;
+		}
+		showMarker(sender, marker);
+	}
+
+	private void showMarker(CommandSender sender, Marker marker) {
+		info(sender, describe(marker));
+		info(sender, (marker.group != null ? "그룹의 설정값: " : "설정값: ") + store.settingsOf(marker).describe());
+	}
+
+	private void infoGroup(CommandSender sender, String name) {
+		Group group = store.group(name);
+		if (group == null) {
+			error(sender, "없는 그룹입니다: " + name);
+			return;
+		}
+		List<String> members = store.members(name).stream().map(marker -> marker.name).toList();
+		info(sender, "그룹 " + name + " (마커 " + members.size() + "개" + (members.isEmpty() ? "" : ": " + String.join(", ", members)) + ")");
+		info(sender, "설정값: " + group.settings.describe());
+	}
+
+	private void setHere(CommandSender sender, String key, String[] tokens) {
+		if (!(sender instanceof Player)) {
+			error(sender, "콘솔에서는 이름을 적어야 합니다: /보트점프 설정 <이름> <항목> <값>");
+			return;
+		}
+		Marker marker = standing(sender);
+		if (marker == null) {
+			setDefault(sender, key, tokens);
+		} else {
+			setOn(sender, marker, key, tokens);
+		}
+	}
+
+	private void setMarker(CommandSender sender, String name, String key, String[] tokens) {
+		if (isDefaultWord(name)) {
+			setDefault(sender, key, tokens);
+			return;
+		}
+		Marker marker = store.get(name);
+		if (marker == null) {
+			error(sender, "없는 마커입니다: " + name);
+			return;
+		}
+		setOn(sender, marker, key, tokens);
+	}
+
+	private void setDefault(CommandSender sender, String key, String[] tokens) {
+		String problem = store.defaults().set(key, tokens);
+		if (problem != null) {
+			error(sender, problem);
+			return;
 		}
 		store.save();
-		info(sender, (marker.group != null ? "그룹 " + marker.group + "의 마커 " + targets.size() + "개를" : "마커 " + marker.name + "을(를)")
-			+ " 고쳤습니다: " + marker.settings.describe());
+		info(sender, "기본값을 고쳤습니다: " + store.defaults().describe());
+	}
+
+	private void setOn(CommandSender sender, Marker marker, String key, String[] tokens) {
+		if (marker.group != null) {
+			error(sender, "마커 " + marker.name + "은(는) 그룹 " + marker.group + "에 속해 있어서 그룹의 설정값을 씁니다. "
+				+ "그룹의 값을 고치려면 /보트점프 그룹 설정 <항목> <값> 을, 이 마커만 따로 고치려면 먼저 /보트점프 그룹 제거 " + marker.name + " 을 쓰십시오.");
+			return;
+		}
+		String problem = marker.settings.set(key, tokens);
+		if (problem != null) {
+			error(sender, problem);
+			return;
+		}
+		marker.customized = true;
+		store.save();
+		info(sender, "마커 " + marker.name + "을(를) 고쳤습니다: " + marker.settings.describe());
 	}
 
 	private void group(CommandSender sender, String[] args) {
-		if (args.length != 3) {
-			error(sender, "사용법: /보트점프 그룹 <이름> <그룹|없음>");
-			return;
-		}
-		Marker marker = store.get(args[1]);
-		if (marker == null) {
-			// 아직 없는 마커이면, 막대기로 선택한 범위로 새로 만든다.
-			boolean none = args[2].equalsIgnoreCase("none");
-			if (!(sender instanceof Player player)) {
-				error(sender, "없는 마커입니다: " + args[1]);
-			} else if (validName(sender, args[1]) && (none || validName(sender, args[2]))) {
-				createFromSelection(player, args[1], none ? null : args[2]);
+		String action = args.length >= 2 ? GROUP_ACTIONS.getOrDefault(args[1].toLowerCase(Locale.ROOT), "") : "";
+		switch (action) {
+			case "add" -> {
+				if (args.length == 3) {
+					groupAdd(sender, args[2]);
+				} else {
+					error(sender, "사용법: /보트점프 그룹 추가 <그룹 이름 또는 마커 이름>");
+				}
 			}
+			case "remove" -> {
+				if (args.length == 3) {
+					groupRemove(sender, args[2]);
+				} else {
+					error(sender, "사용법: /보트점프 그룹 제거 <마커 이름>");
+				}
+			}
+			case "list" -> listGroups(sender);
+			case "info" -> {
+				if (args.length == 3) {
+					infoGroup(sender, args[2]);
+				} else {
+					Group group = standingGroup(sender);
+					if (group != null) {
+						infoGroup(sender, group.name);
+					}
+				}
+			}
+			case "set" -> {
+				if (args.length >= 4 && key(args[2]) != null) {
+					Group group = standingGroup(sender);
+					if (group != null) {
+						setGroup(sender, group, key(args[2]), values(args, 3));
+					}
+				} else if (args.length >= 5 && key(args[3]) != null) {
+					Group group = store.group(args[2]);
+					if (group == null) {
+						error(sender, "없는 그룹입니다: " + args[2]);
+					} else {
+						setGroup(sender, group, key(args[3]), values(args, 4));
+					}
+				} else {
+					error(sender, "사용법: /보트점프 그룹 설정 <항목> <값> 또는 /보트점프 그룹 설정 <그룹> <항목> <값>");
+					error(sender, "항목: " + String.join(", ", BoostSettings.KOREAN.values()));
+				}
+			}
+			default -> error(sender, "사용법: /보트점프 그룹 <추가|제거|리스트|정보|설정> ...");
+		}
+	}
+
+	/** 지금 서 있는 마커가 속한 그룹. 없으면 그 이유를 알리고 null을 돌려준다. */
+	private Group standingGroup(CommandSender sender) {
+		Marker marker = standing(sender);
+		if (marker == null) {
+			error(sender, "그룹에 속한 마커 위에 서 있어야 합니다. 그룹 이름을 직접 적어도 됩니다.");
+			return null;
+		}
+		if (marker.group == null) {
+			error(sender, "마커 " + marker.name + "은(는) 그룹에 속해 있지 않습니다.");
+			return null;
+		}
+		return store.group(marker.group);
+	}
+
+	private void groupAdd(CommandSender sender, String name) {
+		Group group = store.group(name);
+		Marker target;
+		if (group != null) {
+			// 그룹 이름을 적었으면, 지금 서 있는 마커를 그 그룹에 넣는다.
+			target = standing(sender);
+			if (target == null) {
+				error(sender, "그룹 " + name + "에 넣을 마커 위에 서 있어야 합니다.");
+				return;
+			}
+		} else if (store.get(name) != null) {
+			// 마커 이름을 적었으면, 그 마커를 지금 서 있는 마커의 그룹에 넣는다.
+			group = standingGroup(sender);
+			if (group == null) {
+				return;
+			}
+			target = store.get(name);
+		} else {
+			error(sender, "그런 이름의 그룹이나 마커가 없습니다: " + name + " (그룹은 /보트점프 생성 그룹 <이름> 으로 만듭니다)");
 			return;
 		}
-		if (args[2].equalsIgnoreCase("none")) {
-			marker.group = null;
-			store.save();
-			info(sender, "마커 " + marker.name + "의 그룹을 해제했습니다. 설정값은 그대로 유지됩니다.");
-			return;
-		}
-		if (!validName(sender, args[2])) {
-			return;
-		}
-		// 이미 마커가 있는 그룹에 들어가면, 그 그룹의 설정값으로 맞춘다.
-		List<Marker> members = store.members(args[2]);
-		members.remove(marker);
-		if (!members.isEmpty()) {
-			marker.settings = members.getFirst().settings.copy();
-			marker.customized = members.getFirst().customized;
-		}
-		marker.group = args[2];
+		target.group = group.name;
 		store.save();
-		info(sender, "마커 " + marker.name + "을(를) 그룹 " + marker.group + "에 넣었습니다."
-			+ (members.isEmpty() ? "" : " 설정값을 그룹에 맞추었습니다."));
+		info(sender, "마커 " + target.name + "을(를) 그룹 " + group.name + "에 넣었습니다. 이제 그룹의 설정값을 씁니다.");
+	}
+
+	private void groupRemove(CommandSender sender, String name) {
+		Marker marker = store.get(name);
+		if (marker == null) {
+			error(sender, "없는 마커입니다: " + name);
+			return;
+		}
+		if (marker.group == null) {
+			error(sender, "마커 " + name + "은(는) 그룹에 속해 있지 않습니다.");
+			return;
+		}
+		String group = marker.group;
+		store.leaveGroup(marker);
+		store.save();
+		info(sender, "마커 " + name + "을(를) 그룹 " + group + "에서 뺐습니다. 그룹의 설정값을 물려받았습니다.");
+	}
+
+	private void listGroups(CommandSender sender) {
+		if (store.groups().isEmpty()) {
+			info(sender, "그룹이 없습니다.");
+			return;
+		}
+		for (Group group : store.groups()) {
+			List<String> members = store.members(group.name).stream().map(marker -> marker.name).toList();
+			info(sender, "그룹 " + group.name + " (마커 " + members.size() + "개" + (members.isEmpty() ? "" : ": " + String.join(", ", members)) + ")");
+		}
+	}
+
+	private void setGroup(CommandSender sender, Group group, String key, String[] tokens) {
+		String problem = group.settings.set(key, tokens);
+		if (problem != null) {
+			error(sender, problem);
+			return;
+		}
+		group.customized = true;
+		store.save();
+		info(sender, "그룹 " + group.name + "을(를) 고쳤습니다 (마커 " + store.members(group.name).size() + "개에 적용): " + group.settings.describe());
 	}
 
 	private void jumpBlock(CommandSender sender, String[] args) {
-		String action = args.length >= 2 ? args[1].toLowerCase(Locale.ROOT) : "";
+		String action = args.length >= 2 ? BLOCK_ACTIONS.getOrDefault(args[1].toLowerCase(Locale.ROOT), "") : "";
 		if (action.equals("list") && args.length == 2) {
 			info(sender, "보트가 뛰어넘는 블록: " + String.join(", ",
 				store.jumpBlocks().stream().map(material -> material.getKey().getKey()).toList()));
 			return;
 		}
 		if (!(action.equals("add") || action.equals("remove")) || args.length < 3) {
-			error(sender, "사용법: /보트점프 점프블록 <추가|삭제|목록> [블록...]");
+			error(sender, "사용법: /보트점프 점프블록 <추가|삭제> <블록...> 또는 /보트점프 점프블록 리스트");
 			return;
 		}
 
@@ -367,10 +528,19 @@ final class BoatJumpCommand implements TabExecutor, Listener {
 			+ "했습니다. 현재 " + store.jumpBlocks().size() + "개입니다.");
 	}
 
-	private boolean validName(CommandSender sender, String name) {
-		if (name.equals(DEFAULT) || name.equals(DEFAULT_KOREAN) || name.equalsIgnoreCase("none")
-			|| name.equals(NONE_KOREAN) || !NAME.matcher(name).matches()) {
-			error(sender, "이름은 한글, 영문, 숫자, _, - 로 32자 이내여야 하며, 기본값, 없음, default, none은 쓸 수 없습니다: " + name);
+	/** 새 마커나 그룹의 이름으로 쓸 수 있는지 확인한다. 명령어의 낱말과 헷갈리는 이름, 이미 있는 이름은 막는다. */
+	private boolean validNewName(CommandSender sender, String name) {
+		if (!NAME.matcher(name).matches()) {
+			error(sender, "이름은 한글, 영문, 숫자, _, - 로 32자 이내여야 합니다: " + name);
+			return false;
+		}
+		if (isGroupWord(name) || isDefaultWord(name) || key(name) != null) {
+			error(sender, "명령어에서 쓰는 낱말은 이름으로 쓸 수 없습니다: " + name);
+			return false;
+		}
+		// 그룹 추가 명령어가 이름만으로 그룹과 마커를 구분하므로, 둘이 같은 이름을 쓸 수 없다.
+		if (store.get(name) != null || store.group(name) != null) {
+			error(sender, "이미 있는 마커 또는 그룹의 이름입니다: " + name);
 			return false;
 		}
 		return true;
@@ -383,6 +553,8 @@ final class BoatJumpCommand implements TabExecutor, Listener {
 	private static void error(CommandSender sender, String text) {
 		sender.sendMessage(Component.text(text, NamedTextColor.RED));
 	}
+
+	// ---- 자동 완성 ----
 
 	@Override
 	public List<String> onTabComplete(CommandSender sender, Command command, String label, String[] args) {
@@ -417,97 +589,133 @@ final class BoatJumpCommand implements TabExecutor, Listener {
 		}
 	}
 
-	/**
-	 * 지금까지 입력한 내용에 이어서 올 수 있는 항목과 그 설명. 설명이 없는 항목은 값이 null이다.
-	 * 한국어 이름을 먼저 보여 주고, 영어 이름은 영어로 입력하기 시작했을 때에만 보여 준다.
-	 */
-	private Map<String, String> suggest(String[] rawArgs) {
-		String[] args = normalize(rawArgs);
-		String sub = args[0];
-		// 한국어 이름이 있는 항목은 한국어를 korean에, 영어를 english에 넣는다. 이름이 하나뿐인 항목은 korean에만 넣는다.
-		Map<String, String> korean = new LinkedHashMap<>();
-		Map<String, String> english = new LinkedHashMap<>();
+	/** 지금까지 입력한 내용에 이어서 올 수 있는 항목과 그 설명. 설명이 없는 항목은 값이 null이다. */
+	private Map<String, String> suggest(String[] args) {
+		Map<String, String> options = new LinkedHashMap<>();
+		String sub = top(args[0]);
+		int position = args.length;
 
-		if (args.length == 1) {
-			SUBCOMMANDS.forEach((name, info) -> {
-				korean.put(info.korean(), info.description());
-				english.put(name, info.description());
-			});
-		} else if (args.length == 2) {
-			switch (sub) {
-				case "remove", "group" -> addMarkers(korean);
-				case "info", "set" -> {
-					String description = "마커 밖에서 쓰이는 기본 설정값입니다. 벽 튕김, 탄성, 슬라임은 마커 밖에서도 이 값으로 동작합니다.";
-					korean.put(DEFAULT_KOREAN, description);
-					english.put(DEFAULT, description);
-					addMarkers(korean);
+		if (position == 1) {
+			options.put("막대기", "마커 막대기를 받습니다.");
+			options.put("생성", "마커나 그룹을 만듭니다.");
+			options.put("삭제", "마커나 그룹을 지웁니다.");
+			options.put("리스트", "모든 마커를 봅니다.");
+			options.put("정보", "설정값을 봅니다. 이름을 적지 않으면 지금 서 있는 마커를 봅니다.");
+			options.put("설정", "설정값을 고칩니다. 이름을 적지 않으면 지금 서 있는 마커를 고칩니다.");
+			options.put("그룹", "그룹에 마커를 넣거나 빼고, 그룹의 설정값을 다룹니다.");
+			options.put("점프블록", "보트가 뛰어넘을 블록을 관리합니다.");
+		} else if (sub.equals("create") && position == 2) {
+			options.put(GROUP_WORD, "마커 대신 그룹을 만듭니다. 뒤에 그룹 이름을 적습니다.");
+		} else if (sub.equals("remove") && position == 2) {
+			options.put(GROUP_WORD, "마커 대신 그룹을 지웁니다. 뒤에 그룹 이름을 적습니다.");
+			addMarkers(options);
+		} else if (sub.equals("remove") && position == 3 && isGroupWord(args[1])) {
+			addGroups(options);
+		} else if (sub.equals("info") && position == 2) {
+			options.put(GROUP_WORD, "마커 대신 그룹의 설정값을 봅니다. 뒤에 그룹 이름을 적습니다.");
+			options.put(DEFAULT_WORD, "마커 밖에서 쓰이는 기본 설정값입니다.");
+			addMarkers(options);
+		} else if (sub.equals("info") && position == 3 && isGroupWord(args[1])) {
+			addGroups(options);
+		} else if (sub.equals("set")) {
+			// 이름을 적지 않으면 항목이 둘째 자리에, 이름을 적으면 셋째 자리에 온다.
+			boolean named = position >= 3 && key(args[1]) == null;
+			int keyPosition = named ? 3 : 2;
+			if (position == 2) {
+				addKeys(options);
+				options.put(DEFAULT_WORD, "마커 밖에서 쓰이는 기본 설정값을 고칩니다. 뒤에 항목과 값을 적습니다.");
+				addMarkers(options);
+			} else if (position == keyPosition) {
+				addKeys(options);
+			} else if (position == keyPosition + 1) {
+				addValues(options, key(args[keyPosition - 1]));
+			}
+		} else if (sub.equals("group")) {
+			String action = position >= 3 ? GROUP_ACTIONS.getOrDefault(args[1].toLowerCase(Locale.ROOT), "") : "";
+			if (position == 2) {
+				options.put("추가", "그룹 이름을 적으면 지금 서 있는 마커를 그 그룹에 넣고, 마커 이름을 적으면 그 마커를 지금 서 있는 마커의 그룹에 넣습니다.");
+				options.put("제거", "마커를 그룹에서 뺍니다.");
+				options.put("리스트", "모든 그룹을 봅니다.");
+				options.put("정보", "지금 서 있는 마커가 속한 그룹의 설정값을 봅니다.");
+				options.put("설정", "지금 서 있는 마커가 속한 그룹의 설정값을 고칩니다.");
+			} else if (action.equals("add") && position == 3) {
+				addGroups(options);
+				addMarkers(options);
+			} else if (action.equals("remove") && position == 3) {
+				for (Marker marker : store.all()) {
+					if (marker.group != null) {
+						options.put(marker.name, "마커 [그룹 " + marker.group + "]");
+					}
 				}
-				case "jumpblock" -> {
-					korean.put("추가", "보트가 뛰어넘을 블록을 추가합니다. 여러 개를 띄어 써서 한 번에 넣을 수 있습니다.");
-					korean.put("삭제", "보트가 뛰어넘을 블록을 목록에서 삭제합니다.");
-					korean.put("목록", "보트가 뛰어넘는 블록의 목록을 봅니다.");
-					ACTION_ALIASES.forEach((name, action) -> english.put(action, korean.get(name)));
+			} else if (action.equals("info") && position == 3) {
+				addGroups(options);
+			} else if (action.equals("set")) {
+				boolean named = position >= 4 && key(args[2]) == null;
+				int keyPosition = named ? 4 : 3;
+				if (position == 3) {
+					addKeys(options);
+					addGroups(options);
+				} else if (position == keyPosition) {
+					addKeys(options);
+				} else if (position == keyPosition + 1) {
+					addValues(options, key(args[keyPosition - 1]));
 				}
-				default -> { }
 			}
-		} else if (args.length == 3 && sub.equals("set")) {
-			for (String key : BoostSettings.KEYS) {
-				korean.put(KEY_KOREAN.get(key), BoostSettings.DESCRIPTIONS.get(key));
-				english.put(key, BoostSettings.DESCRIPTIONS.get(key));
-			}
-		} else if (args.length == 4 && sub.equals("set")) {
-			if (args[2].equals("enabled")) {
-				korean.put("켜기", "마커의 속도 변화를 켭니다.");
-				korean.put("끄기", "마커의 속도 변화를 끕니다. 튕김 관련 항목은 그대로 동작합니다.");
-				english.put("true", korean.get("켜기"));
-				english.put("false", korean.get("끄기"));
-			} else if (!args[2].equals("interval")) {
-				String description = "정해진 틱마다 값이 무작위로 바뀝니다. 형식: 무작위 [최소 최대] [틱] "
-					+ "(범위를 생략하면 항목별 기본 범위, 틱을 생략하면 " + Value.DEFAULT_PERIOD + "틱)";
-				korean.put("무작위", description);
-				english.put("random", description);
-			}
-		} else if (args.length == 3 && (sub.equals("group") || sub.equals("create"))) {
-			for (String group : store.groups()) {
-				korean.put(group, "그룹 " + group + " (마커 " + store.members(group).size() + "개)");
-			}
-			if (sub.equals("group")) {
-				String description = "그룹에 넣지 않습니다. 이미 그룹에 속한 마커이면 그룹을 해제합니다.";
-				korean.put(NONE_KOREAN, description);
-				english.put("none", description);
-			}
-		} else if (sub.equals("jumpblock") && args.length >= 3 && args[1].equals("remove")) {
-			store.jumpBlocks().forEach(material -> korean.put(material.getKey().getKey(), null));
-		} else if (sub.equals("jumpblock") && args.length >= 3 && args[1].equals("add")) {
-			for (Material material : Material.values()) {
-				if (material.isBlock()) {
-					korean.put(material.getKey().getKey(), null);
+		} else if (sub.equals("jumpblock")) {
+			String action = position >= 3 ? BLOCK_ACTIONS.getOrDefault(args[1].toLowerCase(Locale.ROOT), "") : "";
+			if (position == 2) {
+				options.put("추가", "보트가 뛰어넘을 블록을 추가합니다. 여러 개를 띄어 써서 한 번에 넣을 수 있습니다.");
+				options.put("삭제", "보트가 뛰어넘을 블록을 목록에서 삭제합니다.");
+				options.put("리스트", "보트가 뛰어넘는 블록의 목록을 봅니다.");
+			} else if (action.equals("remove")) {
+				store.jumpBlocks().forEach(material -> options.put(material.getKey().getKey(), null));
+			} else if (action.equals("add")) {
+				for (Material material : Material.values()) {
+					if (material.isBlock()) {
+						options.put(material.getKey().getKey(), null);
+					}
 				}
 			}
 		}
 
-		String typed = rawArgs[rawArgs.length - 1].toLowerCase(Locale.ROOT);
+		String typed = args[args.length - 1].toLowerCase(Locale.ROOT);
 		Map<String, String> matching = new LinkedHashMap<>();
-		addMatching(matching, korean, typed);
-		if (!typed.isEmpty()) {
-			addMatching(matching, english, typed);
+		for (Map.Entry<String, String> option : options.entrySet()) {
+			if (matching.size() < 50 && option.getKey().toLowerCase(Locale.ROOT).startsWith(typed)) {
+				matching.put(option.getKey(), option.getValue());
+			}
 		}
 		return matching;
 	}
 
-	private static void addMatching(Map<String, String> matching, Map<String, String> options, String typed) {
-		for (Map.Entry<String, String> option : options.entrySet()) {
-			if (matching.size() < 50 && option.getKey().toLowerCase(Locale.ROOT).startsWith(typed)) {
-				matching.putIfAbsent(option.getKey(), option.getValue());
-			}
+	private void addMarkers(Map<String, String> options) {
+		for (Marker marker : store.all()) {
+			options.put(marker.name, describe(marker));
 		}
 	}
 
-	private void addMarkers(Map<String, String> options) {
-		for (Marker marker : store.all()) {
-			options.put(marker.name, "마커" + (marker.group != null ? " [그룹 " + marker.group + "]" : "")
-				+ " (" + marker.minX + ", " + marker.minY + ", " + marker.minZ
-				+ ") ~ (" + marker.maxX + ", " + marker.maxY + ", " + marker.maxZ + ")");
+	private void addGroups(Map<String, String> options) {
+		for (Group group : store.groups()) {
+			options.put(group.name, "그룹 (마커 " + store.members(group.name).size() + "개)");
+		}
+	}
+
+	private static void addKeys(Map<String, String> options) {
+		for (String key : BoostSettings.KEYS) {
+			options.put(BoostSettings.KOREAN.get(key), BoostSettings.DESCRIPTIONS.get(key));
+		}
+	}
+
+	private static void addValues(Map<String, String> options, String key) {
+		if (key == null) {
+			return;
+		}
+		if (key.equals("enabled")) {
+			options.put("켜기", "마커의 속도 변화를 켭니다.");
+			options.put("끄기", "마커의 속도 변화를 끕니다. 튕김 관련 항목은 그대로 동작합니다.");
+		} else if (!key.equals("interval")) {
+			options.put("무작위", "정해진 틱마다 값이 무작위로 바뀝니다. 형식: 무작위 [최소 최대] [틱] "
+				+ "(범위를 생략하면 항목별 기본 범위, 틱을 생략하면 " + Value.DEFAULT_PERIOD + "틱)");
 		}
 	}
 }

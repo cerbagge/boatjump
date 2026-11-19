@@ -48,7 +48,7 @@ final class MarkerWand implements Listener {
 	private static final float LINE_WIDTH = 0.04f;
 	/** 설정값을 고치지 않은 마커의 색. */
 	private static final Color PLAIN_COLOR = Color.LIME;
-	/** set 명령어로 설정값을 고친 마커의 색. */
+	/** 설정 명령어로 설정값을 고친 마커(또는 그런 그룹에 속한 마커)의 색. */
 	private static final Color CUSTOMIZED_COLOR = Color.fromRGB(0x3399FF);
 
 	/** 플레이어가 막대기로 고른 두 지점. 아직 고르지 않은 지점은 null이다. */
@@ -121,7 +121,7 @@ final class MarkerWand implements Listener {
 			NamedTextColor.AQUA));
 		if (selection.complete()) {
 			event.getPlayer().sendMessage(Component.text(
-				"범위를 지정했습니다. /보트점프 생성 <이름> [그룹] 으로 마커를 만드십시오.", NamedTextColor.GRAY));
+				"범위를 지정했습니다. /보트점프 생성 <이름> 으로 마커를 만드십시오.", NamedTextColor.GRAY));
 		}
 		refresh(event.getPlayer());
 	}
@@ -176,7 +176,7 @@ final class MarkerWand implements Listener {
 				continue;
 			}
 			wanted.put(new Box(world, marker.minX, marker.minY, marker.minZ, marker.maxX, marker.maxY, marker.maxZ,
-				marker.customized ? CUSTOMIZED_COLOR : PLAIN_COLOR), true);
+				store.customizedOf(marker) ? CUSTOMIZED_COLOR : PLAIN_COLOR), true);
 
 			// 발밑의 블록이 마커 안에 있으면, 어느 마커 위에 서 있는지 알려 준다.
 			if (standing == null && (marker.contains(world.getName(), at.getBlockX(), at.getBlockY(), at.getBlockZ())
@@ -212,7 +212,7 @@ final class MarkerWand implements Listener {
 		if (standing != null) {
 			player.sendActionBar(Component.text(
 				"마커 " + standing.name + (standing.group != null ? " [그룹 " + standing.group + "]" : "")
-					+ "  " + standing.settings.describe(),
+					+ "  " + store.settingsOf(standing).describe(),
 				NamedTextColor.AQUA));
 		}
 	}
