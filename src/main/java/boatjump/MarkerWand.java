@@ -35,7 +35,7 @@ import org.joml.AxisAngle4f;
 import org.joml.Vector3f;
 
 /**
- * 마커 막대기. 블록을 좌클릭하면 첫째 지점, 우클릭하면 둘째 지점을 지정한다.
+ * 마커 막대기. 블록을 좌클릭하면 첫째 지점, 우클릭하면 둘째 지점을 지정하고, 허공을 클릭하면 선택한 범위를 지운다.
  * 막대기를 들고 있는 동안에는 선택한 범위(흰색)와 주변 마커의 범위를 선으로 보여 준다.
  * 마커는 초록색이고, 설정값을 고친 마커는 파란색이다. 그룹에 속한 마커는 그룹마다 다른 색이다.
  * 선은 가늘게 늘인 블록 표시 엔티티이며, 막대기를 든 플레이어에게만 보인다.
@@ -103,10 +103,18 @@ final class MarkerWand implements Listener {
 
 	@EventHandler
 	public void onInteract(PlayerInteractEvent event) {
-		if (event.getHand() != EquipmentSlot.HAND || event.getClickedBlock() == null || !isWand(event.getItem())) {
+		if (event.getHand() != EquipmentSlot.HAND || !isWand(event.getItem())) {
 			return;
 		}
 		Action action = event.getAction();
+		// 블록이 아닌 허공을 클릭하면 선택한 범위를 지운다.
+		if (action == Action.LEFT_CLICK_AIR || action == Action.RIGHT_CLICK_AIR) {
+			if (selections.remove(event.getPlayer().getUniqueId()) != null) {
+				event.getPlayer().sendMessage(Component.text("선택한 범위를 지웠습니다.", NamedTextColor.GRAY));
+				refresh(event.getPlayer());
+			}
+			return;
+		}
 		if (action != Action.LEFT_CLICK_BLOCK && action != Action.RIGHT_CLICK_BLOCK) {
 			return;
 		}

@@ -30,7 +30,7 @@ final class BoatJumpCommand implements TabExecutor, Listener {
 	private record Help(String usage, String description, String suggestion) { }
 
 	private static final List<Help> HELP = List.of(
-		new Help("/보트점프 막대기", "마커 막대기를 받습니다. 블록을 좌클릭하면 첫째 지점, 우클릭하면 둘째 지점이 지정됩니다.", "막대기"),
+		new Help("/보트점프 막대기", "마커 막대기를 받습니다. 블록을 좌클릭하면 첫째 지점, 우클릭하면 둘째 지점이 지정됩니다. 허공을 클릭하면 선택한 범위가 지워집니다.", "막대기"),
 		new Help("/보트점프 생성 <이름>", "막대기로 선택한 범위로 마커를 만듭니다.", "생성 "),
 		new Help("/보트점프 생성 그룹 <이름>", "빈 그룹을 만듭니다. 그룹에 넣은 마커들은 그룹의 설정값을 함께 씁니다.", "생성 그룹 "),
 		new Help("/보트점프 삭제", "지금 서 있거나 바라보는 마커를 지웁니다.", "삭제"),
@@ -208,7 +208,7 @@ final class BoatJumpCommand implements TabExecutor, Listener {
 			return;
 		}
 		player.getInventory().addItem(wand.createWand());
-		info(sender, "마커 막대기를 지급했습니다. 블록을 좌클릭하면 첫째 지점, 우클릭하면 둘째 지점이 지정됩니다.");
+		info(sender, "마커 막대기를 지급했습니다. 블록을 좌클릭하면 첫째 지점, 우클릭하면 둘째 지점이 지정됩니다. 허공을 클릭하면 선택한 범위가 지워집니다.");
 	}
 
 	private void createMarker(CommandSender sender, String name) {
