@@ -146,7 +146,7 @@ public final class BoatJumpPlugin extends JavaPlugin implements Listener {
 			if (now - state.lastSlimeTick >= SLIME_COOLDOWN_TICKS) {
 				state.lastSlimeTick = now;
 				double horizontal = Math.hypot(motionX, motionZ);
-				// 튕기는 동안에는 아래의 속도 변화 처리까지 가지 못하므로, 마커에 막 들어선 경우에는 여기서 속도 배율을 함께 적용한다.
+				// 튕기는 동안에는 아래의 속도 변화 처리까지 가지 못하므로, 마커에 막 들어선 경우에는 여기서 속도률을 함께 적용한다.
 				if (marker != null && settings.enabled && !marker.name.equals(state.lastZone) && horizontal >= MIN_SPEED) {
 					double target = Math.min(
 						horizontal * settings.get("multiplier", now) + settings.get("bonus", now), settings.get("max", now));
@@ -202,7 +202,7 @@ public final class BoatJumpPlugin extends JavaPlugin implements Listener {
 			}
 		}
 
-		// 마커 안에 들어서면 속도를 배율만큼 바꾼다. 매 틱 덮어쓰면 조종이 서버의 늦은 측정값에 끌려가서 어색해지므로,
+		// 마커 안에 들어서면 속도에 속도률을 곱한다. 매 틱 덮어쓰면 조종이 서버의 늦은 측정값에 끌려가서 어색해지므로,
 		// 들어설 때 한 번만 바꾸거나 정해진 간격으로만 바꾼다.
 		String zone = marker != null ? marker.name : null;
 		if (marker != null && settings.enabled) {

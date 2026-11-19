@@ -13,9 +13,9 @@ final class BoostSettings {
 	private static final Map<String, Spec> SPECS = new LinkedHashMap<>();
 
 	static {
-		// 푸른얼음 위에서 속도에 곱하는 배율. 1보다 작으면 느려진다.
+		// 마커에 들어설 때 속도에 곱하는 수(속도률). 1보다 작으면 느려진다.
 		SPECS.put("multiplier", new Spec(2.0, 0.1, 2.0, 0.0, 10.0));
-		// 푸른얼음 위에서 배율과 별도로 더하는 속도(블록/틱).
+		// 속도률을 곱한 뒤에 따로 더하는 속도(블록/틱).
 		SPECS.put("bonus", new Spec(0.0, 0.0, 0.5, 0.0, 5.0));
 		// 푸른얼음 가속으로 도달할 수 있는 최고 속도(블록/틱). 바닐라 푸른얼음의 최고 속도는 약 3.6이다.
 		// 틱당 10블록을 넘으면 서버가 "너무 빠르게 움직였다"고 판단하여 보트를 되돌린다.
@@ -44,7 +44,7 @@ final class BoostSettings {
 	static {
 		KOREAN.put("enabled", "사용");
 		KOREAN.put("interval", "간격");
-		KOREAN.put("multiplier", "배율");
+		KOREAN.put("multiplier", "속도률");
 		KOREAN.put("bonus", "추가속도");
 		KOREAN.put("max", "최고속도");
 		KOREAN.put("wallbounce", "벽튕김");

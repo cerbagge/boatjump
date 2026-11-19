@@ -23,7 +23,7 @@ final class MarkerStore {
 	private final Logger logger;
 	private final Map<String, Marker> markers = new LinkedHashMap<>();
 	private final Map<String, Group> groups = new LinkedHashMap<>();
-	/** 어느 마커에도 속하지 않는 곳에 적용하는 설정값. 속도 배율은 마커 안에서만 쓰이고, 튕김 관련 값은 마커 밖에서도 쓰인다. */
+	/** 어느 마커에도 속하지 않는 곳에 적용하는 설정값. 속도률은 마커 안에서만 쓰이고, 튕김 관련 값은 마커 밖에서도 쓰인다. */
 	private BoostSettings defaults = new BoostSettings();
 	/** 보트가 한 칸 높이일 때 뛰어넘는 블록. 처음에는 얼음 계열 블록이 들어 있다. */
 	private final Set<Material> jumpBlocks = new LinkedHashSet<>();

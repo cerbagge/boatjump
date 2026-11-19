@@ -85,6 +85,8 @@ final class BoatJumpCommand implements TabExecutor, Listener {
 		put(BLOCK_ACTIONS, "list", "리스트", "목록", "list");
 
 		BoostSettings.KOREAN.forEach((english, korean) -> KEY_ALIASES.put(korean, english));
+		// 이전 이름도 계속 받는다.
+		KEY_ALIASES.put("배율", "multiplier");
 	}
 
 	private static void put(Map<String, String> table, String canonical, String... words) {
