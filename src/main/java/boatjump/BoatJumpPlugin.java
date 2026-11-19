@@ -60,7 +60,7 @@ public final class BoatJumpPlugin extends JavaPlugin implements Listener {
 	private static final double WALL_MIN_SPEED = 0.1;
 	/** 벽에 튕긴 뒤 다시 튕길 수 있을 때까지의 간격(틱). */
 	private static final int WALL_COOLDOWN_TICKS = 10;
-	/** 슬라임 블록에서 튕긴 뒤 다시 튕길 수 있을 때까지의 간격(틱). */
+	/** 바닥에서 위로 튕긴 뒤 다시 튕길 수 있을 때까지의 간격(틱). */
 	private static final int SLIME_COOLDOWN_TICKS = 6;
 	/** 이 속도(블록/틱)보다 느리게 떨어졌으면 탄성으로 튀어 오르지 않는다. 얼음에 올라선 뒤의 작은 낙하에 반응하지 않게 한다. */
 	private static final double MIN_FALL_SPEED = 0.15;
@@ -136,12 +136,26 @@ public final class BoatJumpPlugin extends JavaPlugin implements Listener {
 
 		// 단단한 블록의 윗면에 닿아 있을 때에만 위로 튕긴다. 물에 떠 있을 때에는 튕기지 않는다.
 		boolean resting = !groundBlock.isPassable() && to.getY() - (groundBlock.getY() + 1) < 0.05;
-		if (resting && ground == Material.SLIME_BLOCK) {
-			// 슬라임 블록을 밟으면 떨어진 속도와 관계없이 정해진 세기로 튕기므로, 다시 밟을 때마다 계속 튕긴다.
-			double strength = settings.get("slime", now);
-			if (strength > 0 && now - state.lastSlimeTick >= SLIME_COOLDOWN_TICKS) {
+		// 마커의 슬라임 값이 있으면 블록의 종류와 관계없이 튕기고, 없으면 실제 슬라임 블록 위에서만 튕긴다.
+		double launch = marker != null ? settings.get("bounce", now) : 0;
+		if (launch <= 0 && ground == Material.SLIME_BLOCK) {
+			launch = settings.get("slime", now);
+		}
+		if (resting && launch > 0) {
+			// 떨어진 속도와 관계없이 정해진 세기로 튕기므로, 다시 바닥에 닿을 때마다 계속 튕긴다.
+			if (now - state.lastSlimeTick >= SLIME_COOLDOWN_TICKS) {
 				state.lastSlimeTick = now;
-				sendMotion(rider, boat, motionX, strength, motionZ);
+				double horizontal = Math.hypot(motionX, motionZ);
+				// 튕기는 동안에는 아래의 속도 변화 처리까지 가지 못하므로, 마커에 막 들어선 경우에는 여기서 속도 배율을 함께 적용한다.
+				if (marker != null && settings.enabled && !marker.name.equals(state.lastZone) && horizontal >= MIN_SPEED) {
+					double target = Math.min(
+						horizontal * settings.get("multiplier", now) + settings.get("bonus", now), settings.get("max", now));
+					motionX *= target / horizontal;
+					motionZ *= target / horizontal;
+					state.lastBoostTick = now;
+				}
+				state.lastZone = marker != null ? marker.name : null;
+				sendMotion(rider, boat, motionX, launch, motionZ);
 				return;
 			}
 		} else if (resting && previousDy < -MIN_FALL_SPEED && dy > previousDy + 0.1) {
