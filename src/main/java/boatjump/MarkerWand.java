@@ -121,7 +121,7 @@ final class MarkerWand implements Listener {
 			NamedTextColor.AQUA));
 		if (selection.complete()) {
 			event.getPlayer().sendMessage(Component.text(
-				"범위를 지정했습니다. /boatjump create <이름> [그룹] 으로 마커를 만드십시오.", NamedTextColor.GRAY));
+				"범위를 지정했습니다. /보트점프 생성 <이름> [그룹] 으로 마커를 만드십시오.", NamedTextColor.GRAY));
 		}
 		refresh(event.getPlayer());
 	}
