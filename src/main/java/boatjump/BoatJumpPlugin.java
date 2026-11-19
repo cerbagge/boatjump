@@ -56,8 +56,10 @@ public final class BoatJumpPlugin extends JavaPlugin implements Listener {
 	private static final int SPEED_SAMPLES = 5;
 	/** 벽에 부딪히기 몇 틱 전에 튕길지 정하는 값. 속도 패킷이 클라이언트에 닿기까지의 지연 시간을 고려한 값이다. */
 	private static final int WALL_LOOKAHEAD_TICKS = 2;
-	/** 벽 쪽으로 향하는 속도가 이 값(블록/틱)보다 느리면 튕기지 않는다. 벽을 스치며 달릴 때 튕기지 않게 한다. */
-	private static final double WALL_MIN_SPEED = 0.1;
+	/** 벽 쪽으로 향하는 속도가 이 값(블록/틱)보다 느리면 튕기지 않는다. 바로 앞에서 천천히 다가가도 튕기도록 낮게 잡는다. */
+	private static final double WALL_MIN_SPEED = 0.03;
+	/** 벽을 미리 살필 때 보트 앞으로 더 내다보는 거리(블록). 느리게 다가가는 보트가 벽에 닿아 멈추기 전에 알아채게 한다. */
+	private static final double WALL_MARGIN = 0.15;
 	/** 벽에 튕긴 뒤 다시 튕길 수 있을 때까지의 간격(틱). */
 	private static final int WALL_COOLDOWN_TICKS = 10;
 	/** 바닥에서 위로 튕긴 뒤 다시 튕길 수 있을 때까지의 간격(틱). */
@@ -190,8 +192,8 @@ public final class BoatJumpPlugin extends JavaPlugin implements Listener {
 		// 이 자리에서 보트가 한 번에 오를 수 있는 높이(칸). 0이면 오르지 않는다.
 		int maxStep = (int) Math.round(settings.get("step", now));
 		if (!groundBlock.isLiquid() && now - state.lastWallTick >= WALL_COOLDOWN_TICKS) {
-			double wallX = to.getX() + Math.signum(motionX) * (Math.abs(motionX) * WALL_LOOKAHEAD_TICKS + 0.1);
-			double wallZ = to.getZ() + Math.signum(motionZ) * (Math.abs(motionZ) * WALL_LOOKAHEAD_TICKS + 0.1);
+			double wallX = to.getX() + Math.signum(motionX) * (Math.abs(motionX) * WALL_LOOKAHEAD_TICKS + WALL_MARGIN);
+			double wallZ = to.getZ() + Math.signum(motionZ) * (Math.abs(motionZ) * WALL_LOOKAHEAD_TICKS + WALL_MARGIN);
 			boolean hitX = Math.abs(motionX) >= WALL_MIN_SPEED && probe(world, wallX, to.getZ(), half, feetY, maxStep) == SOLID;
 			boolean hitZ = Math.abs(motionZ) >= WALL_MIN_SPEED && probe(world, to.getX(), wallZ, half, feetY, maxStep) == SOLID;
 			if (hitX || hitZ) {
