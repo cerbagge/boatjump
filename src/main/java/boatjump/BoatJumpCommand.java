@@ -26,7 +26,7 @@ import org.bukkit.util.Vector;
 
 /**
  * /보트점프(/boatjump) 명령어. 한국어와 영어로 모두 입력할 수 있다.
- * 이름을 적지 않는 명령어는 플레이어가 지금 서 있거나 바라보는 마커(또는 그 마커의 그룹)를 대상으로 한다.
+ * 설정을 고치는 명령어에는 대상의 이름을 반드시 적는다. 이름을 적지 않는 나머지 명령어는 플레이어가 지금 서 있거나 바라보는 마커를 대상으로 한다.
  */
 final class BoatJumpCommand implements TabExecutor, Listener {
 	/** 도움말 한 줄. 사용법과 설명, 클릭했을 때 입력창에 채울 내용. */
@@ -42,13 +42,12 @@ final class BoatJumpCommand implements TabExecutor, Listener {
 		new Help("/보트점프 정보", "지금 서 있거나 바라보는 마커의 설정값을 봅니다. 그런 마커가 없으면 기본값을 봅니다.", "정보"),
 		new Help("/보트점프 정보 <이름>", "그 마커의 설정값을 봅니다. 이름에 기본값을 적으면 기본값을 봅니다.", "정보 "),
 		new Help("/보트점프 정보 그룹 <이름>", "그 그룹의 설정값과 속한 마커를 봅니다.", "정보 그룹 "),
-		new Help("/보트점프 설정 <항목> <값>", "지금 서 있거나 바라보는 마커의 설정값을 고칩니다. 그런 마커가 없으면 기본값을 고칩니다.", "설정 "),
 		new Help("/보트점프 설정 <이름> <항목> <값>", "그 마커의 설정값을 고칩니다. 이름에 기본값을 적으면 기본값을 고칩니다.", "설정 "),
 		new Help("/보트점프 그룹 추가 <그룹>", "지금 서 있거나 바라보는 마커를 그 그룹에 넣습니다. 없는 그룹이면 새로 만듭니다.", "그룹 추가 "),
 		new Help("/보트점프 그룹 제거 <그룹>", "지금 서 있거나 바라보는 마커를 그 그룹에서 뺍니다. 마커는 그룹의 설정값을 물려받습니다.", "그룹 제거 "),
 		new Help("/보트점프 그룹 리스트", "모든 그룹과 속한 마커를 봅니다.", "그룹 리스트"),
 		new Help("/보트점프 그룹 정보", "지금 서 있거나 바라보는 마커가 속한 그룹의 설정값을 봅니다.", "그룹 정보"),
-		new Help("/보트점프 그룹 설정 <항목> <값>", "지금 서 있거나 바라보는 마커가 속한 그룹의 설정값을 고칩니다. 그룹의 모든 마커에 적용됩니다.", "그룹 설정 "),
+		new Help("/보트점프 그룹 설정 <그룹> <항목> <값>", "그 그룹의 설정값을 고칩니다. 그룹의 모든 마커에 적용됩니다.", "그룹 설정 "),
 		new Help("/보트점프 점프블록 추가 <블록...>", "보트가 한 칸 높이일 때 뛰어넘을 블록을 추가합니다.", "점프블록 추가 "),
 		new Help("/보트점프 점프블록 삭제 <블록...>", "보트가 뛰어넘을 블록을 목록에서 삭제합니다.", "점프블록 삭제 "),
 		new Help("/보트점프 점프블록 리스트", "보트가 뛰어넘는 블록의 목록을 봅니다.", "점프블록 리스트"));
@@ -172,12 +171,10 @@ final class BoatJumpCommand implements TabExecutor, Listener {
 				}
 			}
 			case "set" -> {
-				if (args.length >= 3 && key(args[1]) != null) {
-					setHere(sender, key(args[1]), values(args, 2));
-				} else if (args.length >= 4 && key(args[2]) != null) {
+				if (args.length >= 4 && key(args[2]) != null) {
 					setMarker(sender, args[1], key(args[2]), values(args, 3));
 				} else {
-					error(sender, "사용법: /보트점프 설정 <항목> <값> 또는 /보트점프 설정 <이름> <항목> <값>");
+					error(sender, "사용법: /보트점프 설정 <이름> <항목> <값> (이름에 기본값을 적으면 기본값을 고칩니다)");
 					error(sender, "항목: " + String.join(", ", BoostSettings.KOREAN.values()));
 				}
 			}
@@ -346,19 +343,6 @@ final class BoatJumpCommand implements TabExecutor, Listener {
 		info(sender, "설정값: " + group.settings.describe());
 	}
 
-	private void setHere(CommandSender sender, String key, String[] tokens) {
-		if (!(sender instanceof Player)) {
-			error(sender, "콘솔에서는 이름을 적어야 합니다: /보트점프 설정 <이름> <항목> <값>");
-			return;
-		}
-		Marker marker = standing(sender);
-		if (marker == null) {
-			setDefault(sender, key, tokens);
-		} else {
-			setOn(sender, marker, key, tokens);
-		}
-	}
-
 	private void setMarker(CommandSender sender, String name, String key, String[] tokens) {
 		if (isDefaultWord(name)) {
 			setDefault(sender, key, tokens);
@@ -386,7 +370,7 @@ final class BoatJumpCommand implements TabExecutor, Listener {
 	private void setOn(CommandSender sender, Marker marker, String key, String[] tokens) {
 		if (marker.group != null) {
 			error(sender, "마커 " + marker.name + "은(는) 그룹 " + marker.group + "에 속해 있어서 그룹의 설정값을 씁니다. "
-				+ "그룹의 값을 고치려면 /보트점프 그룹 설정 <항목> <값> 을, 이 마커만 따로 고치려면 먼저 /보트점프 그룹 제거 " + marker.group + " 을 쓰십시오.");
+				+ "그룹의 값을 고치려면 /보트점프 그룹 설정 " + marker.group + " <항목> <값> 을, 이 마커만 따로 고치려면 먼저 /보트점프 그룹 제거 " + marker.group + " 을 쓰십시오.");
 			return;
 		}
 		String problem = marker.settings.set(key, tokens);
@@ -429,12 +413,7 @@ final class BoatJumpCommand implements TabExecutor, Listener {
 				}
 			}
 			case "set" -> {
-				if (args.length >= 4 && key(args[2]) != null) {
-					Group group = standingGroup(sender);
-					if (group != null) {
-						setGroup(sender, group, key(args[2]), values(args, 3));
-					}
-				} else if (args.length >= 5 && key(args[3]) != null) {
+				if (args.length >= 5 && key(args[3]) != null) {
 					Group group = store.group(args[2]);
 					if (group == null) {
 						error(sender, "없는 그룹입니다: " + args[2]);
@@ -442,7 +421,7 @@ final class BoatJumpCommand implements TabExecutor, Listener {
 						setGroup(sender, group, key(args[3]), values(args, 4));
 					}
 				} else {
-					error(sender, "사용법: /보트점프 그룹 설정 <항목> <값> 또는 /보트점프 그룹 설정 <그룹> <항목> <값>");
+					error(sender, "사용법: /보트점프 그룹 설정 <그룹> <항목> <값>");
 					error(sender, "항목: " + String.join(", ", BoostSettings.KOREAN.values()));
 				}
 			}
@@ -644,7 +623,7 @@ final class BoatJumpCommand implements TabExecutor, Listener {
 			options.put("삭제", "마커나 그룹을 지웁니다.");
 			options.put("리스트", "모든 마커를 봅니다.");
 			options.put("정보", "설정값을 봅니다. 이름을 적지 않으면 지금 서 있거나 바라보는 마커를 봅니다.");
-			options.put("설정", "설정값을 고칩니다. 이름을 적지 않으면 지금 서 있거나 바라보는 마커를 고칩니다.");
+			options.put("설정", "설정값을 고칩니다. 뒤에 마커 이름(또는 기본값)과 항목, 값을 적습니다.");
 			options.put("그룹", "그룹에 마커를 넣거나 빼고, 그룹의 설정값을 다룹니다.");
 			options.put("점프블록", "보트가 뛰어넘을 블록을 관리합니다.");
 		} else if (sub.equals("create") && position == 2) {
@@ -661,17 +640,13 @@ final class BoatJumpCommand implements TabExecutor, Listener {
 		} else if (sub.equals("info") && position == 3 && isGroupWord(args[1])) {
 			addGroups(options);
 		} else if (sub.equals("set")) {
-			// 이름을 적지 않으면 항목이 둘째 자리에, 이름을 적으면 셋째 자리에 온다.
-			boolean named = position >= 3 && key(args[1]) == null;
-			int keyPosition = named ? 3 : 2;
 			if (position == 2) {
-				addKeys(options);
 				options.put(DEFAULT_WORD, "마커 밖에서 쓰이는 기본 설정값을 고칩니다. 뒤에 항목과 값을 적습니다.");
 				addMarkers(options);
-			} else if (position == keyPosition) {
+			} else if (position == 3) {
 				addKeys(options);
-			} else if (position == keyPosition + 1) {
-				addValues(options, key(args[keyPosition - 1]));
+			} else if (position == 4) {
+				addValues(options, key(args[2]));
 			}
 		} else if (sub.equals("group")) {
 			String action = position >= 3 ? GROUP_ACTIONS.getOrDefault(args[1].toLowerCase(Locale.ROOT), "") : "";
@@ -680,19 +655,16 @@ final class BoatJumpCommand implements TabExecutor, Listener {
 				options.put("제거", "지금 서 있거나 바라보는 마커를 그룹에서 뺍니다. 뒤에 그룹 이름을 적습니다.");
 				options.put("리스트", "모든 그룹을 봅니다.");
 				options.put("정보", "지금 서 있거나 바라보는 마커가 속한 그룹의 설정값을 봅니다.");
-				options.put("설정", "지금 서 있거나 바라보는 마커가 속한 그룹의 설정값을 고칩니다.");
+				options.put("설정", "그룹의 설정값을 고칩니다. 뒤에 그룹 이름과 항목, 값을 적습니다.");
 			} else if ((action.equals("add") || action.equals("remove") || action.equals("info")) && position == 3) {
 				addGroups(options);
 			} else if (action.equals("set")) {
-				boolean named = position >= 4 && key(args[2]) == null;
-				int keyPosition = named ? 4 : 3;
 				if (position == 3) {
-					addKeys(options);
 					addGroups(options);
-				} else if (position == keyPosition) {
+				} else if (position == 4) {
 					addKeys(options);
-				} else if (position == keyPosition + 1) {
-					addValues(options, key(args[keyPosition - 1]));
+				} else if (position == 5) {
+					addValues(options, key(args[3]));
 				}
 			}
 		} else if (sub.equals("jumpblock")) {
