@@ -54,8 +54,8 @@ public final class BoatJumpPlugin extends JavaPlugin implements Listener {
 
 	/** 속도를 정할 때 참고하는 최근 이동 기록의 개수. */
 	private static final int SPEED_SAMPLES = 5;
-	/** 벽에 부딪히기 몇 틱 전에 튕길지 정하는 값. 속도 패킷이 클라이언트에 닿기까지의 지연 시간을 고려한 값이다. */
-	private static final int WALL_LOOKAHEAD_TICKS = 2;
+	/** 벽을 미리 살필 때 내다보는 시간의 한계(틱). 지연 시간이 아주 긴 플레이어 때문에 너무 멀리 내다보지 않게 한다. */
+	private static final double WALL_MAX_LEAD_TICKS = 4;
 	/** 벽 쪽으로 향하는 속도가 이 값(블록/틱)보다 느리면 튕기지 않는다. 바로 앞에서 천천히 다가가도 튕기도록 낮게 잡는다. */
 	private static final double WALL_MIN_SPEED = 0.03;
 	/** 벽을 미리 살필 때 보트 앞으로 더 내다보는 거리(블록). 느리게 다가가는 보트가 벽에 닿아 멈추기 전에 알아채게 한다. */
@@ -196,15 +196,22 @@ public final class BoatJumpPlugin extends JavaPlugin implements Listener {
 		// 이 자리에서 보트가 한 번에 오를 수 있는 높이(칸). 0이면 오르지 않는다.
 		int maxStep = (int) Math.round(settings.get("step", now));
 		if (!groundBlock.isLiquid() && now - state.lastWallTick >= WALL_COOLDOWN_TICKS) {
-			double wallX = to.getX() + Math.signum(motionX) * (Math.abs(motionX) * WALL_LOOKAHEAD_TICKS + WALL_MARGIN);
-			double wallZ = to.getZ() + Math.signum(motionZ) * (Math.abs(motionZ) * WALL_LOOKAHEAD_TICKS + WALL_MARGIN);
-			boolean hitX = Math.abs(motionX) >= WALL_MIN_SPEED && probe(world, wallX, to.getZ(), half, feetY, maxStep) == SOLID;
-			boolean hitZ = Math.abs(motionZ) >= WALL_MIN_SPEED && probe(world, to.getX(), wallZ, half, feetY, maxStep) == SOLID;
+			// 다음 틱에 닿을 벽까지만 살핀다. 속도 패킷이 닿기까지의 지연 시간이 있으면 그만큼 더 앞을 본다.
+			// 서버가 아는 보트의 위치도 같은 시간만큼 늦으므로, 왕복 시간(핑)을 틱으로 바꾸어 더한다.
+			double lead = Math.min(WALL_MAX_LEAD_TICKS, 1 + rider.getPing() / 50.0);
+			double signX = Math.signum(motionX);
+			double signZ = Math.signum(motionZ);
+			double gapX = Math.abs(motionX) >= WALL_MIN_SPEED
+				? wallGap(world, to.getX(), to.getZ(), signX, 0, Math.abs(motionX) * lead + WALL_MARGIN, half, feetY, maxStep) : -1;
+			double gapZ = Math.abs(motionZ) >= WALL_MIN_SPEED
+				? wallGap(world, to.getX(), to.getZ(), 0, signZ, Math.abs(motionZ) * lead + WALL_MARGIN, half, feetY, maxStep) : -1;
+			boolean hitX = gapX >= 0;
+			boolean hitZ = gapZ >= 0;
 			if (hitX || hitZ) {
 				// 벽 자체를 마커로 지정해 두었으면 그 마커의 설정값을 쓰고, 아니면 보트가 있는 자리의 설정값을 쓴다.
-				Marker wall = hitX ? wallMarker(world, wallX, to.getZ(), half, feetY) : null;
+				Marker wall = hitX ? wallMarker(world, to.getX() + signX * gapX, to.getZ(), half, feetY) : null;
 				if (wall == null && hitZ) {
-					wall = wallMarker(world, to.getX(), wallZ, half, feetY);
+					wall = wallMarker(world, to.getX(), to.getZ() + signZ * gapZ, half, feetY);
 				}
 				BoostSettings wallSettings = wall != null ? store.settingsOf(wall) : settings;
 				// 벽에서 튕기는 세기는 탄성 값을 따른다.
@@ -213,9 +220,23 @@ public final class BoatJumpPlugin extends JavaPlugin implements Listener {
 					state.lastWallTick = now;
 					// 서버가 보트를 되돌려 놓는 속도를 넘지 않게 한다.
 					double limit = BoostSettings.SERVER_SPEED_LIMIT;
-					sendMotion(rider, boat,
-						hitX ? Math.clamp(-motionX * wallBounce, -limit, limit) : motionX, 0,
-						hitZ ? Math.clamp(-motionZ * wallBounce, -limit, limit) : motionZ);
+					double bounceX = hitX ? Math.clamp(-motionX * wallBounce, -limit, limit) : motionX;
+					double bounceZ = hitZ ? Math.clamp(-motionZ * wallBounce, -limit, limit) : motionZ;
+					// 보트가 벽에 닿기까지 실제로 남은 거리. 살필 때 쓴 밑면이 실제보다 조금 좁으므로 그만큼을 뺀다.
+					double restX = hitX ? Math.max(0, gapX - WALL_MARGIN) : 0;
+					double restZ = hitZ ? Math.max(0, gapZ - WALL_MARGIN) : 0;
+					if (restX > WALL_MARGIN || restZ > WALL_MARGIN) {
+						// 빠른 보트는 한 틱에 여러 블록을 움직이므로, 곧바로 튕기면 벽에 닿기 한참 전에 튕기는 것처럼 보인다.
+						// 그래서 이번 틱에는 벽에 닿을 만큼만 움직이게 하고, 다음 틱에 튕겨 낸다.
+						sendMotion(rider, boat, hitX ? signX * restX : motionX, 0, hitZ ? signZ * restZ : motionZ);
+						Bukkit.getScheduler().runTaskLater(this, () -> {
+							if (rider.isOnline() && boat.isValid()) {
+								sendMotion(rider, boat, bounceX, 0, bounceZ);
+							}
+						}, 1);
+					} else {
+						sendMotion(rider, boat, bounceX, 0, bounceZ);
+					}
 					return;
 				}
 			}
@@ -282,6 +303,32 @@ public final class BoatJumpPlugin extends JavaPlugin implements Listener {
 			}
 		}
 		return result;
+	}
+
+	/**
+	 * 보트 밑면을 (stepX, stepZ) 방향으로 조금씩 옮겨 가며, 넘을 수 없는 벽이 처음 걸리는 거리를 찾는다.
+	 * reach 안에 벽이 없거나, 벽보다 먼저 오를 수 있는 턱이 나오면 -1이다.
+	 */
+	private double wallGap(World world, double x, double z, double stepX, double stepZ, double reach,
+		double half, int y, int maxStep) {
+		for (double d = Math.min(SCAN_STEP, reach); ; d = Math.min(d + SCAN_STEP, reach)) {
+			int found = probe(world, x + stepX * d, z + stepZ * d, half, y, maxStep);
+			if (found > 0) {
+				return -1;
+			}
+			if (found == SOLID) {
+				// 벽이 걸린 구간을 더 잘게 나누어, 벽이 처음 걸리는 거리를 찾는다.
+				for (double fine = Math.max(0, d - SCAN_STEP); fine < d; fine += 0.05) {
+					if (probe(world, x + stepX * fine, z + stepZ * fine, half, y, maxStep) == SOLID) {
+						return fine;
+					}
+				}
+				return d;
+			}
+			if (d >= reach) {
+				return -1;
+			}
+		}
 	}
 
 	/** 중심이 (centerX, centerZ)인 보트 밑면 아래의 y 높이에서, 막힌 블록을 포함하고 있는 마커를 찾는다. 없으면 null이다. */
