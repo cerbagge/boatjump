@@ -13,16 +13,13 @@ import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.event.ClickEvent;
 import net.kyori.adventure.text.event.HoverEvent;
 import net.kyori.adventure.text.format.NamedTextColor;
-import org.bukkit.Location;
 import org.bukkit.Material;
-import org.bukkit.block.Block;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandSender;
 import org.bukkit.command.TabExecutor;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
-import org.bukkit.util.Vector;
 
 /**
  * /보트점프(/boatjump) 명령어. 한국어와 영어로 모두 입력할 수 있다.
@@ -95,8 +92,6 @@ final class BoatJumpCommand implements TabExecutor, Listener {
 	private static final Pattern NAME = Pattern.compile("[0-9A-Za-z가-힣_-]{1,32}");
 	private static final String GROUP_WORD = "그룹";
 	private static final String DEFAULT_WORD = "기본값";
-	/** 바라보는 마커를 찾을 때 시선을 따라가는 최대 거리(블록). */
-	private static final int LOOK_DISTANCE = 64;
 
 	private final MarkerStore store;
 	private final MarkerWand wand;
@@ -279,30 +274,7 @@ final class BoatJumpCommand implements TabExecutor, Listener {
 	 * 둘 다 없거나 플레이어가 아니면 null이다.
 	 */
 	private Marker standing(CommandSender sender) {
-		if (!(sender instanceof Player player)) {
-			return null;
-		}
-		Marker marker = store.at(player.getLocation());
-		if (marker != null) {
-			return marker;
-		}
-
-		// 시선을 따라가며 처음 만나는 마커를 찾는다. 시선이 블록에 막히면 그 블록까지만 본다.
-		Location eye = player.getEyeLocation();
-		Vector direction = eye.getDirection();
-		Block target = player.getTargetBlockExact(LOOK_DISTANCE);
-		double reach = target != null ? eye.distance(target.getLocation().add(0.5, 0.5, 0.5)) + 1 : LOOK_DISTANCE;
-		String world = eye.getWorld().getName();
-		for (double d = 0; d <= reach; d += 0.25) {
-			marker = store.find(world,
-				(int) Math.floor(eye.getX() + direction.getX() * d),
-				(int) Math.floor(eye.getY() + direction.getY() * d),
-				(int) Math.floor(eye.getZ() + direction.getZ() * d));
-			if (marker != null) {
-				return marker;
-			}
-		}
-		return null;
+		return sender instanceof Player player ? store.target(player) : null;
 	}
 
 	private void infoHere(CommandSender sender) {

@@ -14,11 +14,17 @@ import java.util.logging.Logger;
 import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.Tag;
+import org.bukkit.block.Block;
 import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.configuration.file.YamlConfiguration;
+import org.bukkit.entity.Player;
+import org.bukkit.util.Vector;
 
 /** 마커와 그룹, 기본 설정값, 보트가 뛰어넘을 블록 목록을 보관하고, markers.yml 파일에 저장한다. */
 final class MarkerStore {
+	/** 바라보는 마커를 찾을 때 시선을 따라가는 최대 거리(블록). */
+	private static final int LOOK_DISTANCE = 64;
+
 	private final File file;
 	private final Logger logger;
 	private final Map<String, Marker> markers = new LinkedHashMap<>();
@@ -159,6 +165,32 @@ final class MarkerStore {
 		String world = location.getWorld().getName();
 		Marker marker = find(world, location.getBlockX(), location.getBlockY(), location.getBlockZ());
 		return marker != null ? marker : find(world, location.getBlockX(), location.getBlockY() - 1, location.getBlockZ());
+	}
+
+	/**
+	 * 플레이어가 서 있는 마커. 마커 밖에 서 있으면 바라보는 마커이고, 둘 다 없으면 null이다.
+	 * 바라보는 마커는 시선을 따라가며 처음 만나는 마커이며, 시선이 블록에 막히면 그 블록까지만 본다.
+	 */
+	Marker target(Player player) {
+		Marker marker = at(player.getLocation());
+		if (marker != null) {
+			return marker;
+		}
+		Location eye = player.getEyeLocation();
+		Vector direction = eye.getDirection();
+		Block block = player.getTargetBlockExact(LOOK_DISTANCE);
+		double reach = block != null ? eye.distance(block.getLocation().add(0.5, 0.5, 0.5)) + 1 : LOOK_DISTANCE;
+		String world = eye.getWorld().getName();
+		for (double d = 0; d <= reach; d += 0.25) {
+			marker = find(world,
+				(int) Math.floor(eye.getX() + direction.getX() * d),
+				(int) Math.floor(eye.getY() + direction.getY() * d),
+				(int) Math.floor(eye.getZ() + direction.getZ() * d));
+			if (marker != null) {
+				return marker;
+			}
+		}
+		return null;
 	}
 
 	Collection<Group> groups() {

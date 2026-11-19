@@ -162,7 +162,6 @@ final class MarkerWand implements Listener {
 		Location at = player.getLocation();
 		World world = at.getWorld();
 		Map<Box, Boolean> wanted = new LinkedHashMap<>();
-		Marker standing = null;
 
 		for (Marker marker : store.all()) {
 			if (!marker.world.equals(world.getName())) {
@@ -177,12 +176,6 @@ final class MarkerWand implements Listener {
 			}
 			wanted.put(new Box(world, marker.minX, marker.minY, marker.minZ, marker.maxX, marker.maxY, marker.maxZ,
 				store.customizedOf(marker) ? CUSTOMIZED_COLOR : PLAIN_COLOR), true);
-
-			// 발밑의 블록이 마커 안에 있으면, 어느 마커 위에 서 있는지 알려 준다.
-			if (standing == null && (marker.contains(world.getName(), at.getBlockX(), at.getBlockY(), at.getBlockZ())
-				|| marker.contains(world.getName(), at.getBlockX(), at.getBlockY() - 1, at.getBlockZ()))) {
-				standing = marker;
-			}
 		}
 
 		Selection selection = selections.get(player.getUniqueId());
@@ -209,10 +202,12 @@ final class MarkerWand implements Listener {
 			boxes.computeIfAbsent(box, key -> spawnBox(player, key));
 		}
 
-		if (standing != null) {
+		// 서 있거나 바라보는 마커의 이름과 설정값을 알려 준다.
+		Marker target = store.target(player);
+		if (target != null) {
 			player.sendActionBar(Component.text(
-				"마커 " + standing.name + (standing.group != null ? " [그룹 " + standing.group + "]" : "")
-					+ "  " + store.settingsOf(standing).describe(),
+				"마커 " + target.name + (target.group != null ? " [그룹 " + target.group + "]" : "")
+					+ "  " + store.settingsOf(target).describe(),
 				NamedTextColor.AQUA));
 		}
 	}
