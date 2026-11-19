@@ -146,10 +146,9 @@ public final class BoatJumpPlugin extends JavaPlugin implements Listener {
 			if (now - state.lastSlimeTick >= SLIME_COOLDOWN_TICKS) {
 				state.lastSlimeTick = now;
 				double horizontal = Math.hypot(motionX, motionZ);
-				// 튕기는 동안에는 아래의 속도 변화 처리까지 가지 못하므로, 마커에 막 들어선 경우에는 여기서 속도률을 함께 적용한다.
+				// 튕기는 동안에는 아래의 속도 변화 처리까지 가지 못하므로, 마커에 막 들어선 경우에는 여기서 속도 변화를 함께 적용한다.
 				if (marker != null && settings.enabled && !marker.name.equals(state.lastZone) && horizontal >= MIN_SPEED) {
-					double target = Math.min(
-						horizontal * settings.get("multiplier", now) + settings.get("bonus", now), settings.get("max", now));
+					double target = changedSpeed(settings, horizontal, now);
 					motionX *= target / horizontal;
 					motionZ *= target / horizontal;
 					state.lastBoostTick = now;
@@ -202,7 +201,7 @@ public final class BoatJumpPlugin extends JavaPlugin implements Listener {
 			}
 		}
 
-		// 마커 안에 들어서면 속도에 속도률을 곱한다. 매 틱 덮어쓰면 조종이 서버의 늦은 측정값에 끌려가서 어색해지므로,
+		// 마커 안에 들어서면 속도에 마커의 속도 값을 더한다. 매 틱 덮어쓰면 조종이 서버의 늦은 측정값에 끌려가서 어색해지므로,
 		// 들어설 때 한 번만 바꾸거나 정해진 간격으로만 바꾼다.
 		String zone = marker != null ? marker.name : null;
 		if (marker != null && settings.enabled) {
@@ -210,8 +209,7 @@ public final class BoatJumpPlugin extends JavaPlugin implements Listener {
 			boolean repeat = settings.interval > 0 && now - state.lastBoostTick >= settings.interval;
 			if (entered || repeat) {
 				state.lastBoostTick = now;
-				double target = Math.min(
-					speed * settings.get("multiplier", now) + settings.get("bonus", now), settings.get("max", now));
+				double target = changedSpeed(settings, speed, now);
 				if (Math.abs(target - speed) > 0.01) {
 					sendMotion(rider, boat, motionX / speed * target, 0, motionZ / speed * target);
 				}
@@ -390,6 +388,20 @@ public final class BoatJumpPlugin extends JavaPlugin implements Listener {
 	private static void sendMotion(Player rider, Boat boat, double x, double y, double z) {
 		((CraftPlayer) rider).getHandle().connection.send(
 			new ClientboundSetEntityMotionPacket(boat.getEntityId(), new Vec3(x, y, z)));
+	}
+
+	/**
+	 * 마커에 들어선 보트의 새 속도(블록/틱). 지금 속도에 마커의 속도 값을 더한다.
+	 * 설정값은 초당 블록 수이므로 20으로 나누어 틱당 블록 수로 바꾼다.
+	 * 느려지는 경우에는 0 아래로 내려가지 않게 하고, 빨라지는 경우에는 서버가 보트를 되돌려 놓는 속도를 넘지 않게 한다.
+	 * 이 한계 때문에 이미 더 빠른 보트가 느려지는 일은 없다.
+	 */
+	private static double changedSpeed(BoostSettings settings, double speed, int now) {
+		double changed = speed + settings.get("speed", now) / 20.0;
+		if (changed <= speed) {
+			return Math.max(0, changed);
+		}
+		return Math.max(speed, Math.min(changed, BoostSettings.SERVER_SPEED_LIMIT));
 	}
 
 	/** 이번 이동량을 기록에 추가하고, 최근 이동량의 중앙값을 돌려준다. */

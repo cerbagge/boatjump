@@ -17,17 +17,13 @@ final class BoostSettings {
 	 * 보트가 이보다 빠르게 움직이면 서버가 "너무 빠르게 움직였다"고 판단하여 보트를 되돌려 놓는다.
 	 * 이 한계는 서버의 spigot.yml(moved-too-quickly-multiplier)에서만 바꿀 수 있다.
 	 */
-	private static final double SERVER_SPEED_LIMIT = 9.5;
+	static final double SERVER_SPEED_LIMIT = 9.5;
 
 	private static final Map<String, Spec> SPECS = new LinkedHashMap<>();
 
 	static {
-		// 마커에 들어설 때 속도에 곱하는 수(속도률). 1보다 작으면 느려진다.
-		SPECS.put("multiplier", new Spec(2.0, 0.1, 2.0, 0.0, MAX_VALUE));
-		// 속도률을 곱한 뒤에 따로 더하는 속도(블록/틱).
-		SPECS.put("bonus", new Spec(0.0, 0.0, 0.5, 0.0, MAX_VALUE));
-		// 푸른얼음 가속으로 도달할 수 있는 최고 속도(블록/틱). 바닐라 푸른얼음의 최고 속도는 약 3.6이다.
-		SPECS.put("max", new Spec(8.0, 1.0, 8.0, 0.1, MAX_VALUE));
+		// 마커에 들어설 때 보트의 속도에 더하는 값(블록/초). 음수이면 느려진다. 0이면 속도를 바꾸지 않는다.
+		SPECS.put("speed", new Spec(0.0, -20.0, 20.0, -MAX_VALUE, MAX_VALUE));
 		// 넘을 수 없는 벽에 부딪혔을 때 뒤로 튕기는 정도. 부딪힌 속도에 곱한다. 0이면 튕기지 않는다.
 		SPECS.put("wallbounce", new Spec(0.5, 0.0, 1.0, 0.0, MAX_VALUE));
 		// 탄성 계수. 바닥에 떨어졌을 때 떨어진 속도에 곱해서 다시 튀어 오른다. 0이면 튀지 않는다.
@@ -52,9 +48,7 @@ final class BoostSettings {
 	static {
 		KOREAN.put("enabled", "사용");
 		KOREAN.put("interval", "간격");
-		KOREAN.put("multiplier", "속도률");
-		KOREAN.put("bonus", "추가속도");
-		KOREAN.put("max", "최고속도");
+		KOREAN.put("speed", "속도");
 		KOREAN.put("wallbounce", "벽튕김");
 		KOREAN.put("elasticity", "탄성");
 		KOREAN.put("bounce", "슬라임");
@@ -63,11 +57,10 @@ final class BoostSettings {
 
 	/** 명령어를 입력할 때 항목에 마우스를 올리면 보여 주는 설명. */
 	static final Map<String, String> DESCRIPTIONS = Map.of(
-		"enabled", "마커의 속도 변화를 켤지 여부입니다. true 또는 false (초기값 true)",
+		"enabled", "마커의 속도 변화를 켤지 여부입니다. 켜기 또는 끄기 (초기값 켜기)",
 		"interval", "마커 안에서 속도 변화를 다시 적용하는 간격(틱)입니다. 0이면 들어설 때 한 번만 적용합니다. (초기값 0)",
-		"multiplier", "마커에 들어설 때 속도에 곱하는 배수입니다. 1보다 작으면 느려집니다. (초기값 2.0)",
-		"bonus", "배수와 별도로 더하는 속도(블록/틱)입니다. (초기값 0)",
-		"max", "속도 변화로 도달할 수 있는 최고 속도(블록/틱)입니다. 9.5를 넘으면 서버가 보트를 되돌려 놓을 수 있습니다. (초기값 8.0)",
+		"speed", "마커에 들어설 때 보트의 속도에 더하는 값(블록/초)입니다. 20이면 초당 20블록 빨라지고, -20이면 그만큼 느려집니다. "
+			+ "0이면 속도를 바꾸지 않습니다. (초기값 0, -100~100)",
 		"wallbounce", "넘을 수 없는 벽에 부딪혔을 때 뒤로 튕기는 정도입니다. 부딪힌 속도에 곱합니다. 0이면 튕기지 않습니다. (초기값 0.5)",
 		"elasticity", "탄성 계수입니다. 바닥에 떨어졌을 때 떨어진 속도에 곱해서 다시 튀어 오릅니다. 0이면 튀지 않습니다. (초기값 0)",
 		"bounce", "마커 안의 바닥을 슬라임처럼 만듭니다. 블록의 종류와 관계없이, 바닥에 닿으면 이 속도(블록/틱)로 위로 튕깁니다. 0이면 튕기지 않습니다. (초기값 0)",
@@ -132,8 +125,8 @@ final class BoostSettings {
 	 * 값 자체는 막지 않는다. 서버 설정을 바꾸어 한계를 올린 서버에서는 그대로 쓸 수 있기 때문이다.
 	 */
 	String speedWarning(String key) {
-		boolean speed = key.equals("max") || key.equals("bounce") || key.equals("slime");
-		if (!speed || values.get(key).max <= SERVER_SPEED_LIMIT) {
+		boolean launch = key.equals("bounce") || key.equals("slime");
+		if (!launch || values.get(key).max <= SERVER_SPEED_LIMIT) {
 			return null;
 		}
 		return "주의: 틱당 " + SERVER_SPEED_LIMIT + "블록을 넘는 속도는 서버가 \"너무 빠르게 움직였다\"고 판단하여 보트를 되돌려 놓을 수 있습니다. "
