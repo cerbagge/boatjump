@@ -206,9 +206,9 @@ final class MarkerWand implements Listener {
 		// 서 있거나 바라보는 마커의 이름을 알려 준다. 이름이 설정 항목처럼 보이지 않도록 이름만 다른 색으로 굵게 쓴다.
 		Marker target = store.target(player);
 		if (target != null) {
-			player.sendActionBar(Component.text("마커 이름: ", NamedTextColor.GRAY)
-				.append(Component.text(target.name, NamedTextColor.YELLOW, TextDecoration.BOLD))
-				.append(Component.text(target.group != null ? "  (그룹: " + target.group + ")" : "", NamedTextColor.AQUA)));
+			player.sendActionBar(Component.text(target.name, NamedTextColor.YELLOW, TextDecoration.BOLD)
+				.append(Component.text(target.group != null ? "  (그룹: " + target.group + ")" : "", NamedTextColor.AQUA)
+					.decoration(TextDecoration.BOLD, false)));
 		}
 	}
 
